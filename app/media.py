@@ -73,7 +73,7 @@ def make_card(plan,shot,path,reference=None):
     draw.multiline_text((pad,int(h*.25)),title,font=font(56,True),fill="white",spacing=16)
     desc=wrap(draw,shot["visual"][:72],font(21),w-pad*2)
     draw.multiline_text((pad,int(h*.62)),desc,font=font(21),fill="#e5e7e5",spacing=12)
-    draw.text((pad,h-75),"你的灵感  ·  三镜头预演  ·  非AI生成画面",font=font(16),fill="#d9dedc")
+    draw.text((pad,h-75),"你的灵感  ·  剧情预演  ·  非AI生成画面",font=font(16),fill="#d9dedc")
     image.save(path,quality=94)
 
 def srt_time(seconds):

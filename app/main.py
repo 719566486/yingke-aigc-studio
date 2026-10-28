@@ -178,8 +178,14 @@ class PlanInput(BaseModel):
     use_llm:bool=False
     send_consent:bool=False
     audio_mode:str="narration"
-    characters:list[str]=Field(default_factory=lambda:["年轻男子，深色外套，声音温柔低沉","年轻女子，浅色连衣裙，声音轻柔"])
-    dialogue_lines:list[str]=Field(default_factory=lambda:["好久不见，你瘦了。","想你想的。"])
+    characters:list=Field(default_factory=list)
+    dialogue_lines:list[str]=Field(default_factory=list)
+    story_script:str=Field(default="",max_length=2000)
+
+class PlanCheckInput(BaseModel):
+    plan:dict
+    for_ai:bool=False
+    reference:bool=False
 
 class JobInput(BaseModel):
     plan:dict
@@ -220,11 +226,8 @@ def plan(body:PlanInput):
     cfg=configuration()
     try:
         if body.audio_mode not in {"narration","dialogue","silent"}: raise HTTPException(400,"请选择人声方式。")
-        if len(body.characters)!=2 or any(not 1<=len(c.strip())<=120 for c in body.characters): raise HTTPException(400,"请填写两位角色的描述，每位最多120字。")
-        if len(body.dialogue_lines)!=2 or any(len(line)>32 for line in body.dialogue_lines): raise HTTPException(400,"请填写两句台词，每句最多32字。")
         if body.audio_mode=="dialogue":
-            if not any(line.strip() for line in body.dialogue_lines): raise HTTPException(400,"请至少填写一句人物台词。")
-            return providers.make_template(body.brief,body.style,body.ratio,body.audio_mode,body.characters,body.dialogue_lines)
+            return providers.make_template(body.brief,body.style,body.ratio,body.audio_mode,body.characters,body.dialogue_lines,body.story_script)
         if body.use_llm:
             if not body.send_consent: raise HTTPException(400,"请先确认向文本模型发送创意。")
             if not cfg["llm_key"] or not cfg["llm_model"]: raise HTTPException(400,"请先配置文本模型。")
@@ -234,8 +237,24 @@ def plan(body:PlanInput):
                 for shot in result["shots"]: shot["narration"]=""
             return result
         return providers.make_template(body.brief,body.style,body.ratio,body.audio_mode)
-    except providers.ProviderError as exc: raise HTTPException(502,str(exc))
+    except providers.ProviderError as exc: raise HTTPException(400 if body.audio_mode=="dialogue" else 502,str(exc))
     except httpx.HTTPError: raise HTTPException(502,"文本模型暂时无法连接，请核对网络和服务地址。")
+
+@app.post("/api/plan/check")
+def check_plan(body:PlanCheckInput):
+    try:
+        checked=providers.validate_plan(body.plan,strict=False)
+        if body.for_ai:
+            if body.plan.get("style") not in providers.STYLE or body.plan.get("ratio") not in {"9:16","16:9"}:
+                raise providers.ProviderError("请选择有效画风与画幅。")
+            try:
+                providers.request_body({**body.plan,**checked},configuration(),"preflight" if body.reference else None)
+            except providers.ProviderError as exc:
+                checked["timing"]["issues"].append(str(exc))
+                checked["timing"]["ready"]=False
+        return checked
+    except providers.ProviderError as exc: raise HTTPException(400,str(exc))
+
 
 @app.post("/api/uploads")
 async def upload(image:UploadFile=File(...)):

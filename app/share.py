@@ -223,6 +223,11 @@ async def plan(body: dict):
     return await core("POST", "/api/plan", body=body)
 
 
+@app.post("/api/plan/check")
+async def check_plan(body: dict):
+    return await core("POST","/api/plan/check",body=body)
+
+
 @app.post("/api/uploads")
 async def upload(request: Request, image: UploadFile = File(...)):
     raw = await image.read(10 * 1024 * 1024 + 1)

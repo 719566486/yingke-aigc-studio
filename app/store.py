@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+DATA = Path(os.environ.get("STUDIO_DATA_DIR", str(ROOT / "data"))).resolve()
 JOBS = DATA / "jobs"
 UPLOADS = DATA / "uploads"
 for folder in (DATA, JOBS, UPLOADS, ROOT / "work"):
@@ -17,7 +17,7 @@ DEFAULTS = {
     "kling_base": "https://api-beijing.klingai.com/v1",
     "kling_model": "kling-v3", "kling_mode": "std",
     "llm_base": "https://api.openai.com/v1", "llm_model": "",
-    "daily_limit": 10, "tts_device": "cuda", "retention_hours": 72,
+    "daily_limit": 10, "tts_device": "cuda" if os.name == "nt" else "cpu", "retention_hours": 72,
 }
 SECRETS = ("kling_api_key", "kling_access_key", "kling_secret_key", "llm_key")
 TERMINAL = {"completed", "failed", "cancelled", "unknown"}
@@ -28,8 +28,17 @@ class Blob(ctypes.Structure):
 def protect(text: str, decrypt=False) -> str:
     if not text:
         return ""
+    master = os.environ.get("STUDIO_MASTER_KEY", "")
+    if text.startswith("fernet:") or (not decrypt and (master or os.name != "nt")):
+        if not master:
+            raise RuntimeError("云端需要配置 STUDIO_MASTER_KEY，以加密保护服务密钥。")
+        from cryptography.fernet import Fernet
+        cipher = Fernet(master.encode("ascii"))
+        if decrypt:
+            return cipher.decrypt(text.removeprefix("fernet:").encode("ascii")).decode("utf-8")
+        return "fernet:" + cipher.encrypt(text.encode("utf-8")).decode("ascii")
     if os.name != "nt":
-        raise RuntimeError("本版本的密钥加密只支持 Windows 本机用户。")
+        raise RuntimeError("Windows 本机凭证不能直接迁移，请在云平台环境变量中重新配置。")
     raw = base64.b64decode(text) if decrypt else text.encode("utf-8")
     buffer = ctypes.create_string_buffer(raw)
     source = Blob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_byte)))
@@ -53,6 +62,11 @@ def settings():
             result.update(saved)
         for key in SECRETS:
             result.setdefault(key, "")
+            if os.environ.get("STUDIO_" + key.upper()):
+                result[key] = os.environ["STUDIO_" + key.upper()]
+        for key in ("kling_base", "kling_model", "kling_mode", "tts_device"):
+            if os.environ.get("STUDIO_" + key.upper()):
+                result[key] = os.environ["STUDIO_" + key.upper()]
         return result
 
 def save_settings(changes):

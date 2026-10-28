@@ -1,0 +1,28 @@
+# A paid, persistent service; review the provider's quote before confirming creation.
+services:
+  - type: web
+    name: yingke-aigc-studio
+    runtime: docker
+    plan: 2c-4g
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/share/ping
+    numInstances: 1
+    autoDeployTrigger: off
+    disk:
+      name: yingke-data
+      mountPath: /app/data
+      sizeGB: 10
+    envVars:
+      - key: STUDIO_MASTER_KEY
+        generateValue: true
+      - key: STUDIO_SHARE_CODE
+        generateValue: true
+      - key: STUDIO_KLING_API_KEY
+        sync: false
+      - key: STUDIO_KLING_BASE
+        value: https://api-beijing.klingai.com/v1
+      - key: STUDIO_SHARE_DAILY_LIMIT
+        value: "10"
+      - key: STUDIO_TTS_DEVICE
+        value: cpu

@@ -19,11 +19,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .store import ROOT, protect
+from .store import ROOT, DATA, JOBS, UPLOADS, protect
 
 CORE = "http://127.0.0.1:8787"
-DB = ROOT / "data/share.sqlite3"
-SECRET_FILE = ROOT / "data/share-secret.json"
+DB = DATA / "share.sqlite3"
+SECRET_FILE = DATA / "share-secret.json"
 LOCK = threading.RLock()
 DAILY_LIMIT = int(os.environ.get("STUDIO_SHARE_DAILY_LIMIT", "10"))
 GUEST_AI_LIMIT = 1
@@ -54,6 +54,8 @@ def db():
 
 def share_code():
     with LOCK:
+        if os.environ.get("STUDIO_SHARE_CODE"):
+            return os.environ["STUDIO_SHARE_CODE"]
         if SECRET_FILE.exists():
             return protect(json.loads(SECRET_FILE.read_text(encoding="utf-8"))["code"], decrypt=True)
         code = secrets.token_urlsafe(18)
@@ -110,7 +112,9 @@ def owns_upload(owner, upload_id):
 
 
 app = FastAPI(title="映刻访客体验", docs_url=None, redoc_url=None, openapi_url=None)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver", "*.trycloudflare.com", "*.lhr.life", "*.localhost.run"])
+SHARE_HOSTS = ["127.0.0.1", "localhost", "testserver", "*.trycloudflare.com", "*.lhr.life", "*.localhost.run"]
+SHARE_HOSTS += [h.strip() for h in os.environ.get("STUDIO_PUBLIC_HOSTS", "").split(",") if h.strip()]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=SHARE_HOSTS)
 
 
 @app.middleware("http")
@@ -215,7 +219,7 @@ def uploaded(upload_id: str, request: Request):
     owns_upload(request.state.visitor["id"], upload_id)
     if not re.fullmatch(r"[a-f0-9]{32}", upload_id):
         raise HTTPException(404, "图片不存在。")
-    path = ROOT / "data/uploads" / (upload_id + ".jpg")
+    path = UPLOADS / (upload_id + ".jpg")
     if not path.exists():
         raise HTTPException(404, "图片已清理。")
     return FileResponse(path, media_type="image/jpeg")
@@ -304,7 +308,7 @@ async def artifact(job_id: str, kind: str, request: Request, download: bool = Fa
     if kind != "cover" and info["status"] != "completed":
         raise HTTPException(409, "成片尚未完成。")
     name, mime = names[kind]
-    path = ROOT / "data/jobs" / job_id / name
+    path = JOBS / job_id / name
     if not path.exists():
         raise HTTPException(404, "文件已被清理。")
     return FileResponse(path, media_type=mime, filename=("映刻短片" + Path(name).suffix) if download else None)

@@ -43,6 +43,20 @@ function applyCaps(caps){
 function chooseStyle(style){
   state.style=style;document.querySelectorAll("[data-style]").forEach(el=>{const on=el.dataset.style===style;el.classList.toggle("selected",on);el.setAttribute("aria-pressed",on);});
 }
+const styleReferences={
+  cinema:{title:"电影写实",description:"真人质感、自然光影与电影构图。",credit:"Tears of Steel · Blender Foundation / Project Mango",source:"https://commons.wikimedia.org/wiki/File:Tears_of_Steel_frame_00_1c.jpg",license:"CC BY 3.0",licenseUrl:"https://creativecommons.org/licenses/by/3.0/"},
+  anime:{title:"清新动画",description:"柔和色彩、可爱的角色与清新的自然场景。",credit:"Spring · Blender Institute",source:"https://commons.wikimedia.org/wiki/File:SpringOpenMovie-final_scene.jpg",license:"CC BY-SA 4.0",licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0/"},
+  ink:{title:"东方水墨",description:"墨色层次、山水笔意与留白。",credit:"石涛《山水图》· 大都会艺术博物馆开放藏品",source:"https://www.metmuseum.org/art/collection/search/49175",license:"公有领域 / CC0",licenseUrl:"https://creativecommons.org/publicdomain/zero/1.0/"},
+  fantasy:{title:"梦幻童话",description:"奇幻角色、童话世界与富有想象力的氛围。",credit:"Sintel · Blender Foundation",source:"https://commons.wikimedia.org/wiki/File:Sintel-screenshot-4.jpg",license:"CC BY 3.0",licenseUrl:"https://creativecommons.org/licenses/by/3.0/"}
+};
+$("openStyleReference").addEventListener("click",()=>{
+  const ref=styleReferences[state.style];$("styleReferenceTitle").textContent=ref.title+" · 风格参考";
+  const picture=$("styleReferenceImage");picture.src="/assets/styles/"+state.style+".jpg";picture.alt=ref.description;
+  $("styleReferenceDescription").textContent=ref.description;
+  $("styleReferenceCredit").innerHTML='<a href="'+ref.source+'" target="_blank" rel="noopener noreferrer">'+esc(ref.credit)+'</a> · <a href="'+ref.licenseUrl+'" target="_blank" rel="noopener noreferrer">'+esc(ref.license)+'</a> · 缩略图仅作显示裁切';
+  $("styleReferenceDialog").showModal();
+});
+$("closeStyleReference").addEventListener("click",()=>$("styleReferenceDialog").close());
 function chooseRatio(ratio){
   state.ratio=ratio;document.querySelectorAll("[data-ratio]").forEach(el=>{const on=el.dataset.ratio===ratio;el.classList.toggle("selected",on);el.setAttribute("aria-pressed",on);});
   $("previewSpec").textContent="15 秒 / "+ratio;$("previewStage").classList.toggle("landscape",ratio==="16:9");

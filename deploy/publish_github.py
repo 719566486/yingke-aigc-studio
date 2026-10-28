@@ -17,7 +17,7 @@ PROJECT = json.loads((ROOT / "deploy/project.json").read_text(encoding="utf-8"))
 OWNER, REPO = PROJECT["owner"], PROJECT["repository"]
 REMOTE = f"https://github.com/{OWNER}/{REPO}.git"
 DESCRIPTION = "映刻 AIGC 创作体验平台：GitHub 访问入口与本机生成后台"
-ALLOWED = ["app", "static", "tests", "deploy", "docs", ".gitignore", "README.md", "requirements.txt", "requirements-lock.txt", "run.py", "run_share.py", "start.ps1", "stop.ps1", "启动平台.cmd", "停止平台.cmd", "share_start.ps1", "share_stop.ps1", "启动分享.cmd", "停止分享.cmd"]
+ALLOWED = ["app", "static", "tests", "deploy", "docs", ".github/workflows", "Dockerfile", ".dockerignore", "compose.yaml", "render.yaml", ".gitignore", "README.md", "requirements.txt", "requirements-lock.txt", "run.py", "run_share.py", "start.ps1", "stop.ps1", "启动平台.cmd", "停止平台.cmd", "share_start.ps1", "share_stop.ps1", "启动分享.cmd", "停止分享.cmd"]
 
 
 def git(*arguments, check=True):

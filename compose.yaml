@@ -1,0 +1,16 @@
+services:
+  studio:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: ./data/cloud.env
+    environment:
+      STUDIO_DATA_DIR: /app/data
+      STUDIO_TTS_DEVICE: cpu
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - studio-data:/app/data
+    stop_grace_period: 45s
+volumes:
+  studio-data:

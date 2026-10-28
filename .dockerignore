@@ -1,0 +1,12 @@
+*
+!requirements.txt
+!app/
+!app/*.py
+!static/
+!static/**
+!deploy/
+!deploy/cloud_requirements.txt
+!deploy/download_cloud_models.py
+!deploy/run_cloud.py
+!run.py
+**/__pycache__/

@@ -15,7 +15,7 @@ en=KPipeline(lang_code="a",repo_id="hexgrad/Kokoro-82M-v1.1-zh",model=False)
 def english(value): return next(en(value)).phonemes
 pipeline=KPipeline(lang_code="z",repo_id="hexgrad/Kokoro-82M-v1.1-zh",model=model,en_callable=english)
 tasks=json.loads(Path(args.manifest).read_text(encoding="utf-8"))
-output_root=Path(__file__).resolve().parent.parent/"data/jobs"
+output_root=Path(os.environ.get("STUDIO_DATA_DIR", str(Path(__file__).resolve().parent.parent/"data")))/"jobs"
 for task in tasks:
     out=Path(task["output"]).resolve()
     if not out.is_relative_to(output_root.resolve()): raise RuntimeError("Output is outside the studio.")

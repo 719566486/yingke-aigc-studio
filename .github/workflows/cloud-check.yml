@@ -1,0 +1,31 @@
+name: Cloud runtime check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cloud-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download licensed reference images
+        run: |
+          python -m pip install httpx
+          python deploy/fetch_style_images.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: style-reference-images
+          path: static/assets/styles/
+      - name: Build Linux cloud image
+        run: docker build -t yingke-cloud-check .
+      - name: Run without the owner's computer or paid API
+        run: |
+          docker run -d --name studio --init -p 8080:8080 -e STUDIO_ALLOW_PREVIEW_ONLY=1 -e STUDIO_MASTER_KEY="$(openssl rand -base64 32)" -e STUDIO_SHARE_CODE=cloud-smoke-test -e STUDIO_PUBLIC_HOSTS=127.0.0.1 yingke-cloud-check
+          python deploy/smoke_cloud.py
+      - name: Cloud container logs
+        if: always()
+        run: docker logs studio 2>&1 || true

@@ -3,13 +3,13 @@ import json, math, os, random, re, subprocess, threading, textwrap, wave
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from .store import ROOT, JOBS, UPLOADS
-FFMPEG = Path(os.environ.get("STUDIO_FFMPEG", r"D:\workspace\tools\ffmpeg\ffmpeg-8.1.2-essentials_build\bin\ffmpeg.exe"))
-FFPROBE = FFMPEG.with_name("ffprobe.exe")
+FFMPEG = Path(os.environ.get("STUDIO_FFMPEG", r"D:\workspace\tools\ffmpeg\ffmpeg-8.1.2-essentials_build\bin\ffmpeg.exe" if os.name == "nt" else "/usr/bin/ffmpeg"))
+FFPROBE = Path(os.environ.get("STUDIO_FFPROBE", str(FFMPEG.with_name("ffprobe.exe" if os.name == "nt" else "ffprobe"))))
 TTS_ROOT = Path(os.environ.get("STUDIO_TTS_ROOT", r"D:\workspace\local_tts"))
-TTS_PYTHON = TTS_ROOT / ".venv/Scripts/python.exe"
+TTS_PYTHON = Path(os.environ.get("STUDIO_TTS_PYTHON", str(TTS_ROOT / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python"))))
 TTS_LOCK = threading.Lock()
-FONT = Path(r"C:\Windows\Fonts\msyh.ttc")
-BOLD = Path(r"C:\Windows\Fonts\msyhbd.ttc")
+FONT = Path(os.environ.get("STUDIO_FONT", r"C:\Windows\Fonts\msyh.ttc" if os.name == "nt" else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"))
+BOLD = Path(os.environ.get("STUDIO_FONT_BOLD", r"C:\Windows\Fonts\msyhbd.ttc" if os.name == "nt" else "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"))
 PALETTES = {"cinema":("#b49e85","#2d4349","#dfbfa0"),"anime":("#b6c4de","#557c82","#e3bdbe"),
             "ink":("#e2e4dc","#425d61","#becdc3"),"fantasy":("#cdb9e1","#68578d","#ebc899")}
 def run(command,cwd,timeout=240):
@@ -92,7 +92,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Microsoft YaHei,{38 if h>w else 30},&H00FFFFFF,&H00FFFFFF,&H001A1A1A,&H60000000,0,0,0,0,100,100,0,0,1,2,1,2,45,45,{125 if h>w else 70},1
+Style: Default,{os.environ.get('STUDIO_CAPTION_FONT', 'Microsoft YaHei' if os.name == 'nt' else 'Noto Sans CJK SC')},{38 if h>w else 30},&H00FFFFFF,&H00FFFFFF,&H001A1A1A,&H60000000,0,0,0,0,100,100,0,0,1,2,1,2,45,45,{125 if h>w else 70},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

@@ -10,7 +10,9 @@
 
 访客连接与管理员工作台是两个独立入口。访客不能读取或修改服务配置，只能访问自己会话创建的图片与作品。首版每位访客每天最多创建1个AI视频、3个免费预演，全站每天最多接受10个AI任务；已提交但结果未知的任务也占用预留额度，避免绕过费用上限。访客仍需明确确认生成及素材发送。
 
-公开连接由 Windows 自带 SSH 工具连接 localhost.run，临时地址可能在重连后变化。分享进程会更新 GitHub 入口配置；GitHub Pages 构建更新通常需要等待，暂时连接不上时可稍后重试。电脑关机、网络中断或分享进程关闭期间，固定入口会显示暂未开启服务。本版本不是独立的24小时云服务器部署。
+公开连接优先使用本机已安装的官方 cloudflared 工具，未安装或连接失败时使用 Windows 自带 SSH 工具连接 localhost.run。临时地址可能在重连后变化；分享进程会自动更新 GitHub 入口配置，入口优先读取最新连接信息。电脑关机、网络中断或分享进程关闭期间，固定入口会显示暂未开启服务。本版本不是独立的24小时云服务器部署。
+
+可选的官方 cloudflared 程序放在 work/tools/cloudflared.exe 或通过 STUDIO_CLOUDFLARED 指定。它不进入源码仓库，官方下载地址为 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe 。没有该程序时仍可使用 SSH 备用连接。
 
 GitHub只上传应用源码、测试和访问入口文件。data、work、.venv、outputs、API密钥、数据库、用户图片及成片均不上传。公开入口中的体验码只授权受额度限制的访客创作，不是可灵API密钥。密钥仍由本机Windows用户加密保护。
 

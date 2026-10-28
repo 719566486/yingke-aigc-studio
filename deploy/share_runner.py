@@ -18,6 +18,7 @@ STATE = ROOT / "data/sharing-state.json"
 STOP = WORK / "share-stop"
 PYTHON = ROOT / ".venv/Scripts/python.exe"
 SSH = Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32/OpenSSH/ssh.exe"
+CLOUDFLARED = Path(os.environ.get("STUDIO_CLOUDFLARED", str(ROOT / "work/tools/cloudflared.exe")))
 PROJECT = json.loads((ROOT / "deploy/project.json").read_text(encoding="utf-8"))
 FLAGS = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
@@ -62,22 +63,31 @@ def main():
     tunnel = None
     published_url = None
     retry_at = 0
+    cloud_attempted = False
+    connection_started = 0
     try:
         while not STOP.exists():
             if tunnel is None or tunnel.poll() is not None:
                 if tunnel is not None:
                     time.sleep(4)
                 log_path = WORK / "sharing-tunnel.log"
+                provider = "cloudflare" if CLOUDFLARED.exists() and not cloud_attempted else "ssh"
+                if provider == "cloudflare":
+                    cloud_attempted = True
+                    command = [str(CLOUDFLARED), "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:8788", "--protocol", "http2", "--edge-ip-version", "4"]
+                else:
+                    command = [str(SSH), "-T", "-R", "80:127.0.0.1:8788", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", "-o", "ExitOnForwardFailure=yes", "-o", "BatchMode=yes", "-o", "IdentityAgent=none", "-o", "IdentitiesOnly=yes", "-o", "IdentityFile=none", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=" + str(WORK / "tunnel-known-hosts"), "nokey@localhost.run"]
                 with log_path.open("wb") as output:
-                    tunnel = subprocess.Popen([str(SSH), "-T", "-R", "80:127.0.0.1:8788", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", "-o", "ExitOnForwardFailure=yes", "-o", "BatchMode=yes", "-o", "IdentityAgent=none", "-o", "IdentitiesOnly=yes", "-o", "IdentityFile=none", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=" + str(WORK / "tunnel-known-hosts"), "nokey@localhost.run"], cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, creationflags=FLAGS)
-                state.update(tunnel_pid=tunnel.pid, online=False)
+                    tunnel = subprocess.Popen(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, creationflags=FLAGS)
+                state.update(tunnel_pid=tunnel.pid, online=False, provider=provider)
+                connection_started = time.time()
                 save(state)
                 address = None
-                for _ in range(70):
+                for _ in range(45):
                     if STOP.exists() or tunnel.poll() is not None:
                         break
                     log = log_path.read_text(encoding="utf-8", errors="replace")
-                    matches = re.findall(r"https://[a-z0-9-]+\.lhr\.life", log)
+                    matches = re.findall(r"https://[a-z0-9-]+\.(?:lhr\.life|trycloudflare\.com)", log)
                     if matches:
                         address = matches[-1]
                         break
@@ -94,7 +104,7 @@ def main():
                 print("Visitor connection ready:", address, flush=True)
             # The free relay can rotate its domain without ending the SSH process.
             log = (WORK / "sharing-tunnel.log").read_text(encoding="utf-8", errors="replace")
-            current_urls = re.findall(r"https://[a-z0-9-]+\.lhr\.life", log)
+            current_urls = re.findall(r"https://[a-z0-9-]+\.(?:lhr\.life|trycloudflare\.com)", log)
             if current_urls and current_urls[-1] != state["url"]:
                 state.update(url=current_urls[-1], online=True, message="Public visitor address refreshed")
                 save(state)
@@ -103,6 +113,8 @@ def main():
             if (ROOT / "data/github-publication.json").exists() and not (WORK / "pause-publication").exists() and state["url"] != published_url and time.time() >= retry_at:
                 health = ready(state["url"] + "/api/share/ping")
                 if not health or not health.get("online"):
+                    if provider == "cloudflare" and time.time() - connection_started > 60:
+                        tunnel.terminate()
                     retry_at = time.time() + 5
                     time.sleep(1)
                     continue

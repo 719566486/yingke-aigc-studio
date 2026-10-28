@@ -15,7 +15,7 @@ async function api(path,options={}){
   }
   let response;
   try{response=await fetch(path,{...requestOptions,headers});}
-  catch(e){throw new Error("本机服务暂时无法连接。请检查启动窗口是否仍在运行。");}
+  catch(e){throw new Error(window.STUDIO_SHARED?"活动工作室暂时无法连接，请稍后重新打开主办方分享的网址。":"本机服务暂时无法连接。请检查启动窗口是否仍在运行。");}
   if(!response.ok){
     let body={};try{body=await response.json();}catch(e){}
     if(response.status===403 && body.detail==="会话已更新，请刷新页面。" && !options._retried){

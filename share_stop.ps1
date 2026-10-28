@@ -6,7 +6,9 @@ if(Test-Path -LiteralPath $statePath){
   $state=Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
   if($state.tunnel_pid){
     $owned=Get-CimInstance Win32_Process -Filter "ProcessId=$($state.tunnel_pid)" -ErrorAction SilentlyContinue
-    if($owned -and $owned.Name -eq 'ssh.exe' -and $owned.CommandLine -match 'localhost\.run' -and $owned.CommandLine -match '8788'){
+    $knownSsh=$owned -and $owned.Name -eq 'ssh.exe' -and $owned.CommandLine -match 'localhost\.run'
+    $knownCloud=$owned -and $owned.Name -eq 'cloudflared.exe' -and $owned.ExecutablePath -eq (Join-Path $StudioRoot 'work\tools\cloudflared.exe')
+    if(($knownSsh -or $knownCloud) -and $owned.CommandLine -match '8788'){
       Stop-Process -Id $state.tunnel_pid -Force -ErrorAction SilentlyContinue
     }
   }

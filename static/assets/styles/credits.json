@@ -1,0 +1,34 @@
+[
+  {
+    "style": "cinema",
+    "file": "cinema.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Tears_of_Steel_frame_00_1c.jpg",
+    "author": "Blender Foundation / Project Mango",
+    "license": "https://creativecommons.org/licenses/by/3.0/",
+    "modifications": "Displayed with CSS cropping only; source image not edited."
+  },
+  {
+    "style": "anime",
+    "file": "anime.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Spring-concept_art-house.jpg",
+    "author": "David Revoy / Blender Foundation / Spring concept art",
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "modifications": "Displayed with CSS cropping only; source image not edited."
+  },
+  {
+    "style": "fantasy",
+    "file": "fantasy.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Sintel-screenshot-4.jpg",
+    "author": "Blender Foundation / Sintel",
+    "license": "https://creativecommons.org/licenses/by/3.0/",
+    "modifications": "Displayed with CSS cropping only; source image not edited."
+  },
+  {
+    "style": "ink",
+    "file": "ink.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Shitao_%28Zhu_Ruoji%29_-_Landscape_-_1989.363.153_-_Metropolitan_Museum_of_Art.jpg",
+    "author": "Shitao / The Metropolitan Museum of Art",
+    "license": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modifications": "Displayed with CSS cropping only; source image not edited."
+  }
+]

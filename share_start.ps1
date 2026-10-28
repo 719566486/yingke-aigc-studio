@@ -1,5 +1,15 @@
 $ErrorActionPreference='Stop'
 $StudioRoot=$PSScriptRoot
+$CloudState=Join-Path $StudioRoot 'data\cloud-deployment.json'
+if(Test-Path -LiteralPath $CloudState){
+  $Cloud=Get-Content -LiteralPath $CloudState -Raw -Encoding UTF8 | ConvertFrom-Json
+  if($Cloud.ready){
+    Write-Output 'The verified cloud studio is active. This computer can be turned off.'
+    Write-Output 'Entry: https://719566486.github.io/yingke-aigc-studio/'
+    if($env:STUDIO_NO_BROWSER -ne '1'){Start-Process 'https://719566486.github.io/yingke-aigc-studio/'}
+    return
+  }
+}
 $StudioPid=Join-Path $StudioRoot 'work\share-supervisor.pid'
 $StudioPython=Join-Path $StudioRoot '.venv\Scripts\python.exe'
 $StudioScript=Join-Path $StudioRoot 'deploy\share_runner.py'

@@ -39,6 +39,10 @@ def ready(url):
 
 def main():
     WORK.mkdir(exist_ok=True)
+    cloud_state = ROOT / "data/cloud-deployment.json"
+    if cloud_state.exists() and json.loads(cloud_state.read_text(encoding="utf-8")).get("ready"):
+        print("Verified cloud backend is active; local sharing is unnecessary.", flush=True)
+        return
     STOP.unlink(missing_ok=True)
     (WORK / "share-supervisor.pid").write_text(str(os.getpid()), encoding="ascii")
     env = os.environ.copy()

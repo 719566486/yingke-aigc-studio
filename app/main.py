@@ -190,7 +190,7 @@ class SettingsInput(BaseModel):
     llm_model:str=Field(default="",max_length=100)
     llm_key:str=Field(default="",max_length=500)
     daily_limit:int=Field(default=10,ge=1,le=100)
-    tts_device:str="cuda"
+    tts_device:str=store.DEFAULTS["tts_device"]
     retention_hours:int=Field(default=72,ge=1,le=720)
 
 @app.get("/api/bootstrap")

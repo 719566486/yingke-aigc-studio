@@ -15,7 +15,7 @@ jobs:
       - name: Download licensed reference images
         run: |
           python -m pip install httpx
-          python deploy/fetch_style_images.py
+          if [ ! -f static/assets/styles/credits.json ]; then python deploy/fetch_style_images.py; fi
       - uses: actions/upload-artifact@v4
         with:
           name: style-reference-images

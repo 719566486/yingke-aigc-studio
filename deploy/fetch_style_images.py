@@ -9,7 +9,7 @@ DEST=ROOT/'static/assets/styles';DEST.mkdir(parents=True,exist_ok=True)
 SOURCES=[
  ('cinema','Tears of Steel frame 00 1c.jpg','Blender Foundation / Project Mango','https://creativecommons.org/licenses/by/3.0/'),
  ('anime','Spring-concept art-house.jpg','David Revoy / Blender Foundation / Spring concept art','https://creativecommons.org/licenses/by/4.0/'),
- ('fantasy','Sintel-screenshot-4.jpg','Blender Foundation / Sintel','https://creativecommons.org/licenses/by/3.0/'),
+ ('fantasy','Sintel-screenshot-3.jpg','Blender Foundation / Sintel','https://creativecommons.org/licenses/by/3.0/'),
  ('ink','Shitao (Zhu Ruoji) - Landscape - 1989.363.153 - Metropolitan Museum of Art.jpg','Shitao / The Metropolitan Museum of Art','https://creativecommons.org/publicdomain/zero/1.0/'),
 ]
 def fetch(item):

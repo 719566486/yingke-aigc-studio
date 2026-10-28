@@ -3,7 +3,9 @@ async function connect(){
  const status=document.getElementById("status"),message=document.getElementById("message"),retry=document.getElementById("retry"),spinner=document.getElementById("spinner");
  retry.hidden=true;spinner.hidden=false;status.textContent="正在连接创作工作室";
  try{
-  const config=await fetch("connection.json?t="+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw Error();return r.json();});
+  let config;
+  try{config=await fetch("https://raw.githubusercontent.com/719566486/yingke-aigc-studio/main/docs/connection.json?t="+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(6000)}).then(r=>{if(!r.ok)throw Error();return r.json();});}
+  catch(error){config=await fetch("connection.json?t="+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw Error();return r.json();});}
   const url=new URL(config.url);
   if(url.protocol!=="https:"||!/(\.trycloudflare\.com|\.lhr\.life|\.localhost\.run)$/.test(url.hostname))throw Error();
   const ping=await fetch(url.origin+"/api/share/ping",{cache:"no-store",signal:AbortSignal.timeout(8000)}).then(r=>r.json());

@@ -45,7 +45,8 @@ def audit_staged():
         if any(value.encode() in raw for value in private):
             raise RuntimeError("A configured private credential was found in staged source. Upload stopped.")
         manifest.append({"path": name, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()})
-    (ROOT / "work/github-source-audit.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    if manifest:
+        (ROOT / "work/github-source-audit.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return len(manifest)
 
 

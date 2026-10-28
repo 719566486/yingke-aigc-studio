@@ -92,7 +92,20 @@ def main():
                 save(state)
                 (ROOT / "docs/connection.json").write_text(json.dumps({"url": address, "access": share_code()}, ensure_ascii=False, indent=2), encoding="utf-8")
                 print("Visitor connection ready:", address, flush=True)
-            if (ROOT / "data/github-publication.json").exists() and state["url"] != published_url and time.time() >= retry_at:
+            # The free relay can rotate its domain without ending the SSH process.
+            log = (WORK / "sharing-tunnel.log").read_text(encoding="utf-8", errors="replace")
+            current_urls = re.findall(r"https://[a-z0-9-]+\.lhr\.life", log)
+            if current_urls and current_urls[-1] != state["url"]:
+                state.update(url=current_urls[-1], online=True, message="Public visitor address refreshed")
+                save(state)
+                (ROOT / "docs/connection.json").write_text(json.dumps({"url": state["url"], "access": share_code()}, ensure_ascii=False, indent=2), encoding="utf-8")
+                print("Visitor address refreshed:", state["url"], flush=True)
+            if (ROOT / "data/github-publication.json").exists() and not (WORK / "pause-publication").exists() and state["url"] != published_url and time.time() >= retry_at:
+                health = ready(state["url"] + "/api/share/ping")
+                if not health or not health.get("online"):
+                    retry_at = time.time() + 5
+                    time.sleep(1)
+                    continue
                 result = subprocess.run([str(PYTHON), "-B", str(ROOT / "deploy/publish_github.py")], cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", timeout=200, creationflags=FLAGS)
                 if result.returncode == 0:
                     published_url = state["url"]

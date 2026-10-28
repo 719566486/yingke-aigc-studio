@@ -20,7 +20,7 @@ def validate_base(url):
         raise ValueError("生成服务地址应使用供应商的 HTTPS 地址。")
     return url.rstrip("/")
 
-def make_template(brief, style, ratio):
+def make_template(brief, style, ratio, audio_mode="narration", characters=None, dialogue_lines=None):
     short=re.split(r"[，。！？\n]",brief.strip())[0][:22]
     narration=[
         f"{short[:18]}，故事从这里开始。",
@@ -34,22 +34,44 @@ def make_template(brief, style, ratio):
     shots=[{"index":i+1,"name":names[i],"duration":5,
             "visual":f"主题：{brief}。{actions[i]}{STYLE[style]}。无文字、无字幕、无标志。",
             "narration":narration[i]} for i in range(3)]
+    characters=characters or ["年轻男子，深色外套，声音温柔低沉","年轻女子，浅色连衣裙，声音轻柔"]
+    if audio_mode=="dialogue":
+        lines=dialogue_lines or ["好久不见，你瘦了。","想你想的。"]
+        scene=re.split(r"[，。！？\n]",brief.strip())[0][:100]
+        shots[0].update(name="久别重逢",visual=f"{scene}。A与B见面，A深情地望向B开口说话，B安静聆听。保持两人的服装和面容一致。",speaker="A",dialogue=lines[0])
+        shots[1].update(name="笑着回应",visual=f"同一场景、同一对人物。切到B的中近景，B看着A微笑着回答，A安静聆听。",speaker="B",dialogue=lines[1])
+        shots[2].update(name="目光里的回答",visual="同一对人物站在原处相视微笑，两人都不说话，以温柔的双人中景收束。",speaker="",dialogue="")
+    if audio_mode!="narration":
+        for shot in shots: shot["narration"]=""
     return {"title":short[:12] or "我的第一支短片","brief":brief,"style":style,"ratio":ratio,
-            "shots":shots,"planner":"template","planner_label":"本地模板分镜，可编辑"}
+            "audio_mode":audio_mode,"characters":characters,
+            "shots":shots,"planner":"template","planner_label":"人物剧情分镜，可编辑" if audio_mode=="dialogue" else "本地模板分镜，可编辑"}
 
 def validate_plan(value):
     if not isinstance(value,dict) or not isinstance(value.get("shots"),list) or len(value["shots"])!=3:
         raise ProviderError("分镜必须恰好包含 3 个镜头。")
     title=str(value.get("title","我的短片")).strip()
     if not 1<=len(title)<=40: raise ProviderError("标题应为 1—40 字。")
-    result={"title":title,"shots":[]}
+    audio_mode=value.get("audio_mode","narration")
+    if audio_mode not in {"narration","dialogue","silent"}: raise ProviderError("人声方式不正确。")
+    characters=value.get("characters",["年轻男子，深色外套","年轻女子，浅色连衣裙"])
+    if not isinstance(characters,list) or len(characters)!=2 or any(not isinstance(c,str) or not 1<=len(c.strip())<=120 for c in characters):
+        raise ProviderError("请填写两位角色的外貌与声音描述，各不超过120字。")
+    result={"title":title,"shots":[],"audio_mode":audio_mode,"characters":characters}
     for i, shot in enumerate(value["shots"]):
         visual=str(shot.get("visual","")).strip()
         voice=str(shot.get("narration","")).strip()
         if not 5<=len(visual)<=650: raise ProviderError(f"镜头 {i+1} 画面描述应为 5—650 字。")
-        if not 1<=len(voice)<=32: raise ProviderError(f"镜头 {i+1} 旁白应为 1—32 字，适合 5 秒画面。")
+        if len(voice)>32: raise ProviderError(f"镜头 {i+1} 旁白最多32字，也可以留空。")
+        dialogue=str(shot.get("dialogue","")).strip()
+        speaker=str(shot.get("speaker","")).strip()
+        if len(dialogue)>32 or speaker not in {"","A","B"} or (dialogue and not speaker):
+            raise ProviderError(f"镜头 {i+1} 请指定A或B说话，台词最多32字。")
         result["shots"].append({"index":i+1,"name":str(shot.get("name",f"镜头 {i+1}"))[:24],
-                                "duration":5,"visual":visual,"narration":voice})
+                                "duration":5,"visual":visual,"narration":voice if audio_mode=="narration" else "",
+                                "speaker":speaker,"dialogue":dialogue})
+    if audio_mode=="dialogue" and not any(s["dialogue"] for s in result["shots"]):
+        raise ProviderError("人物剧情至少需要一句台词。")
     return result
 
 def plan_with_llm(brief,style,ratio,config):
@@ -98,9 +120,26 @@ def headers(config):
 def kling_path(reference): return "/videos/image2video" if reference else "/videos/text2video"
 
 def request_body(plan,config,image_base64=None,external_id=""):
+    audio_mode=plan.get("audio_mode","narration")
+    bgm_mode=plan.get("bgm_mode","none")
+    native=audio_mode=="dialogue" or bgm_mode=="ai"
+    if native and config["kling_model"]!="kling-v3":
+        raise ProviderError("人物对白和同步AI配乐需要支持原生音画的kling-v3模型。")
+    def shot_prompt(shot):
+        prompt=STYLE[plan["style"]]+"。"+shot["visual"]
+        if audio_mode=="dialogue":
+            chars=plan.get("characters",["年轻男子","年轻女子"])
+            prompt+=f"。角色A：{chars[0]}；角色B：{chars[1]}。保持人物、声音与服装一致。"
+            if shot.get("dialogue"):
+                prompt+=f"角色{shot['speaker']}用普通话自然地说：“{shot['dialogue']}”。只有该角色说话，另一人安静聆听，口型与台词同步，无画外旁白。"
+            else: prompt+="两人均不说话，无旁白。"
+        elif native: prompt+="无人声、无对白、无歌唱，人物不说话。"
+        if native:
+            prompt+=("背景为轻柔纯器乐配乐："+plan.get("bgm_prompt","温柔的钢琴与弦乐，电影感，安静舒缓")[:160]+"。音乐轻于对白，整片配乐连贯。" if bgm_mode=="ai" else "不要背景音乐，仅保留清晰对白与自然环境声。")
+        return prompt
     body={"model_name":config["kling_model"],"prompt":
-        STYLE[plan["style"]]+". "+"; ".join(f"shot {s['index']}, 5, {s['visual']}" for s in plan["shots"]),
-        "mode":config["kling_mode"],"duration":"15","sound":"off",
+        "; ".join(f"shot {s['index']}, 5s, {shot_prompt(s)}" for s in plan["shots"]),
+        "mode":config["kling_mode"],"duration":"15","sound":"on" if native else "off",
         "external_task_id":external_id}
     if len(body["prompt"])>2500: raise ProviderError("镜头提示词过长，请缩短画面描述。")
     if image_base64:
@@ -110,7 +149,7 @@ def request_body(plan,config,image_base64=None,external_id=""):
         if config["kling_model"]=="kling-v3":
             prompts=[]
             for shot in plan["shots"]:
-                prompt=STYLE[plan["style"]]+"。"+shot["visual"]
+                prompt=shot_prompt(shot)
                 if len(prompt)>512:
                     raise ProviderError(f"镜头 {shot['index']} 的画面描述过长，请缩短至约 470 字以内。")
                 prompts.append({"index":shot["index"],"prompt":prompt,"duration":str(shot["duration"])})

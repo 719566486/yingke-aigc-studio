@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .store import ROOT, DATA, JOBS, UPLOADS, protect
+from .store import ROOT, DATA, JOBS, UPLOADS, AUDIO_UPLOADS, protect
 from .ui import version_assets
 
 CORE = "http://127.0.0.1:8787"
@@ -212,6 +212,7 @@ async def bootstrap(request: Request):
     value = await core("GET", "/api/bootstrap")
     capabilities = {k: value["capabilities"][k] for k in ("ffmpeg", "tts", "kling", "voices")}
     capabilities.update(llm=False, local_only=False)
+    capabilities["native_audio"]=value["capabilities"].get("native_audio",False)
     return {"token": request.state.visitor["csrf"], "capabilities": capabilities, "version": "0.1.0-share", "retention_hours": value["retention_hours"]}
 
 
@@ -244,6 +245,25 @@ def uploaded(upload_id: str, request: Request):
     return FileResponse(path, media_type="image/jpeg")
 
 
+@app.post("/api/audio-uploads")
+async def upload_audio(request: Request, audio: UploadFile = File(...)):
+    raw=await audio.read(20*1024*1024+1)
+    if len(raw)>20*1024*1024: raise HTTPException(413,"背景音乐不能超过20MB。")
+    value=await core("POST","/api/audio-uploads",files={"audio":(audio.filename or "music.mp3",raw,audio.content_type)})
+    with db() as handle:
+        handle.execute("INSERT INTO uploads(id,owner) VALUES(?,?)",(value["id"],request.state.visitor["id"]))
+    return value
+
+
+@app.get("/api/audio-uploads/{audio_id}")
+def uploaded_audio(audio_id: str, request: Request):
+    owns_upload(request.state.visitor["id"],audio_id)
+    if not re.fullmatch(r"[a-f0-9]{32}",audio_id): raise HTTPException(404,"背景音乐不存在。")
+    path=AUDIO_UPLOADS/(audio_id+".mp3")
+    if not path.is_file(): raise HTTPException(404,"背景音乐已被清理。")
+    return FileResponse(path,media_type="audio/mpeg")
+
+
 @app.post("/api/jobs")
 async def create_job(body: dict, request: Request):
     owner = request.state.visitor["id"]
@@ -255,6 +275,8 @@ async def create_job(body: dict, request: Request):
         raise HTTPException(400, "请求编号不正确，请刷新页面。")
     if body.get("reference_id"):
         owns_upload(owner, body["reference_id"])
+    if body.get("bgm_mode")=="upload":
+        owns_upload(owner,str(body.get("bgm_id","")))
     fingerprint = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     namespaced = "share-" + owner[:16] + "-" + key
     with LOCK, db() as handle:

@@ -1,6 +1,6 @@
 "use strict";
 const $=(id)=>document.getElementById(id);
-const state={token:"",caps:{},style:"cinema",ratio:"9:16",mode:"preview",reference:null,plan:null,job:null,poll:null,busy:false,creationKey:null,creationPayload:null};
+const state={token:"",caps:{},style:"cinema",ratio:"9:16",mode:"preview",reference:null,bgm:null,plan:null,job:null,poll:null,busy:false,creationKey:null,creationPayload:null};
 const names={zf_001:"温柔女声 · 001",zf_003:"清新女声 · 003",zm_010:"沉稳男声 · 010",zm_009:"自然男声 · 009"};
 const statusNames={queued:"排队中",running:"制作中",completed:"已完成",failed:"未完成",paused:"等待继续",unknown:"待核对",cancelled:"已取消"};
 const examples={cat:{brief:"一只小猫误入云端的图书馆，找到一封来自未来的信，决定把它送到星星的家里。",style:"fantasy"},city:{brief:"清晨，年轻的咖啡师推开街角小店的门，阳光洒过咖啡杯，城市在一阵香气里慢慢醒来。",style:"cinema"},ink:{brief:"一叶小舟驶入水墨山水，船上的小旅人放飞一只纸鹤，纸鹤带着晨光飞向远山。",style:"ink"}};
@@ -38,7 +38,7 @@ function applyCaps(caps){
   if((caps.voices||[]).includes(old))$("voiceSelect").value=old;
   $("klingModeBadge").textContent=caps.kling?"已配置 · 按次扣费":"待配置";
   $("configDot").classList.toggle("ready",caps.kling);
-  $("serviceSummary").textContent=caps.tts&&caps.ffmpeg?"配音与视频合成已就绪":"配音或视频服务需要检查";
+  $("serviceSummary").textContent=caps.tts&&caps.ffmpeg?"配音与视频合成已就绪":"配音或视频服务需要检查";updateSoundUI();
 }
 function chooseStyle(style){
   state.style=style;document.querySelectorAll("[data-style]").forEach(el=>{const on=el.dataset.style===style;el.classList.toggle("selected",on);el.setAttribute("aria-pressed",on);});
@@ -62,9 +62,10 @@ function chooseRatio(ratio){
   $("previewSpec").textContent="15 秒 / "+ratio;$("previewStage").classList.toggle("landscape",ratio==="16:9");
 }
 function chooseMode(mode){
+  if(mode==="preview"&&$("bgmMode").value==="ai"){toast("AI自动配乐随AI动态短片生成，预演可改为上传MP3或不加配乐。");mode="kling";}
   if(mode==="kling"&&!state.caps.kling){openSettings();toast("先保存可灵开放平台凭证，再制作 AI 动态短片。");return;}
   state.mode=mode;$("previewMode").classList.toggle("selected",mode==="preview");$("klingMode").classList.toggle("selected",mode==="kling");$("paidConsentLine").hidden=mode!=="kling";
-  $("modeHint").textContent=mode==="preview"?"本地预演使用模板画面或你的参考图，画面不由 AI 生成。":"生成会消耗可灵开放平台额度。时长取决于服务排队；若提交结果未知，平台会停止自动重提。";
+  $("modeHint").textContent=state.plan?.audio_mode==="dialogue"?(mode==="preview"?"台词卡预演不会生成人物讲话；选择AI动态短片，生成角色原声与口型。":"使用可灵原生音画生成角色台词与口型；请预览检查说话人、台词和口型。音频可能影响生成计费。"):mode==="preview"?"本地预演使用模板画面或你的参考图，画面不由 AI 生成。":"生成会消耗可灵开放平台额度。时长取决于服务排队；若提交结果未知，平台会停止自动重提。";
   $("renderButton").querySelector("span").textContent=mode==="preview"?"生成预演短片":"生成 AI 动态短片";
 }
 async function uploadFile(file){
@@ -75,15 +76,37 @@ async function uploadFile(file){
   catch(e){toast(e.message);}
   finally{$("planButton").disabled=false;}
 }
+function updateSoundUI(){
+  const mode=$("audioMode").value,bgm=$("bgmMode").value;
+  $("voiceSettings").hidden=mode!=="narration";$("dialogueFields").hidden=mode!=="dialogue";
+  $("musicUploadFields").hidden=bgm!=="upload";$("musicAiFields").hidden=bgm!=="ai";
+  $("useLlm").disabled=!state.caps.llm||mode==="dialogue";
+  if($("useLlm").disabled){$("useLlm").checked=false;$("llmConsentLine").hidden=true;}
+  $("llmHint").textContent=mode==="dialogue"?"使用你填写的角色台词":state.caps.llm?"已配置":"需配置文本模型";
+}
+async function uploadMusic(file){
+  if(!file)return;
+  if(!file.name.toLowerCase().endsWith(".mp3")||file.size>20*1024*1024){toast("请选择20MB以内的MP3音乐。");return;}
+  $("planButton").disabled=true;
+  try{const form=new FormData();form.append("audio",file);const result=await api("/api/audio-uploads",{method:"POST",body:form});state.bgm=result.id;$("musicName").textContent=file.name+" · "+Math.round(result.duration)+" 秒";$("musicPlayer").src=result.url;$("musicPreview").hidden=false;}
+  catch(e){toast(e.message);}finally{$("planButton").disabled=false;}
+}
 function renderPlan(plan){
-  state.plan=plan;$("filmTitle").value=plan.title;$("plannerLabel").textContent=plan.planner_label||"三镜头分镜";
-  $("shotList").innerHTML=plan.shots.map((s,i)=>'<article class="shot-card"><div class="shot-head"><span>0'+(i+1)+'</span><strong>'+esc(s.name)+'</strong><span>'+String(i*5).padStart(2,"0")+'—'+String((i+1)*5).padStart(2,"0")+' s</span></div><div class="shot-body"><label for="narration'+i+'">旁白 · 建议 6—18 字，最多 32 字</label><textarea id="narration'+i+'" data-narration="'+i+'" maxlength="32" rows="2">'+esc(s.narration)+'</textarea><details><summary>查看与修改画面描述</summary><label class="sr-only" for="visual'+i+'">镜头画面描述</label><textarea id="visual'+i+'" data-visual="'+i+'" maxlength="650" rows="4">'+esc(s.visual)+'</textarea></details></div></article>').join("");
-  $("ideaSheet").hidden=true;$("storyboardSheet").hidden=false;$("posterTitle").textContent=plan.title;chooseRatio(plan.ratio);chooseMode("preview");showError("renderError","");
+  state.plan=plan;$("audioMode").value=plan.audio_mode||"narration";updateSoundUI();
+  $("filmTitle").value=plan.title;$("plannerLabel").textContent=plan.planner_label||"三镜头分镜";
+  $("shotList").innerHTML=plan.shots.map((shot,i)=>{
+    let sound='<p class="sound-note">本镜头不加人声</p>';
+    if((plan.audio_mode||"narration")==="narration")sound='<label for="narration'+i+'">旁白 · 可留空，最多32字</label><textarea id="narration'+i+'" maxlength="32" rows="2">'+esc(shot.narration)+'</textarea>';
+    if(plan.audio_mode==="dialogue")sound='<label for="speaker'+i+'">谁说话？</label><select id="speaker'+i+'" class="text-input"><option value=""'+(!shot.speaker?' selected':'')+'>本镜头不说话</option><option value="A"'+(shot.speaker==='A'?' selected':'')+'>角色 A</option><option value="B"'+(shot.speaker==='B'?' selected':'')+'>角色 B</option></select><label for="dialogue'+i+'">台词 · 可留空，最多32字</label><textarea id="dialogue'+i+'" maxlength="32" rows="2">'+esc(shot.dialogue||"")+'</textarea>';
+    return '<article class="shot-card"><div class="shot-head"><span>0'+(i+1)+'</span><strong>'+esc(shot.name)+'</strong><span>'+String(i*5).padStart(2,"0")+'—'+String((i+1)*5).padStart(2,"0")+' s</span></div><div class="shot-body">'+sound+'<details><summary>查看与修改画面描述</summary><label class="sr-only" for="visual'+i+'">镜头画面描述</label><textarea id="visual'+i+'" maxlength="650" rows="4">'+esc(shot.visual)+'</textarea></details></div></article>';
+  }).join("");
+  $("ideaSheet").hidden=true;$("storyboardSheet").hidden=false;$("posterTitle").textContent=plan.title;chooseRatio(plan.ratio);chooseMode(plan.audio_mode==="dialogue"||$("bgmMode").value==="ai"?"kling":"preview");showError("renderError","");
 }
 function readPlan(){
-  const result={...state.plan,title:$("filmTitle").value.trim(),shots:state.plan.shots.map((s,i)=>({...s,narration:$("narration"+i).value.trim(),visual:$("visual"+i).value.trim()}))};
+  const mode=state.plan.audio_mode||"narration";
+  const result={...state.plan,title:$("filmTitle").value.trim(),shots:state.plan.shots.map((shot,i)=>({...shot,narration:mode==="narration"?$("narration"+i).value.trim():"",dialogue:mode==="dialogue"?$("dialogue"+i).value.trim():"",speaker:mode==="dialogue"?$("speaker"+i).value:"",visual:$("visual"+i).value.trim()}))};
   if(!result.title)throw new Error("给短片起一个名字吧。");
-  for(const s of result.shots){if(!s.narration||!s.visual)throw new Error("每个镜头都需要画面描述和旁白。");}
+  for(const shot of result.shots){if(!shot.visual)throw new Error("每个镜头都需要画面描述。");if(shot.dialogue&&!shot.speaker)throw new Error("请给台词指定说话角色。");}
   return result;
 }
 async function generatePlan(){
@@ -91,7 +114,7 @@ async function generatePlan(){
   if(brief.length<4){showError("formError","先写下至少 4 个字的创意，或者选择下方的灵感示例。");$("brief").focus();return;}
   if($("useLlm").checked&&!$("llmConsent").checked){showError("formError","使用 AI 编剧前，请确认向文本模型发送这段创意。");return;}
   $("planButton").disabled=true;$("planButton").querySelector("span:not(.button-icon)").textContent="正在整理故事…";
-  try{const plan=await api("/api/plan",{method:"POST",body:{brief,style:state.style,ratio:state.ratio,use_llm:$("useLlm").checked,send_consent:$("llmConsent").checked}});renderPlan(plan);$("storyboardSheet").scrollIntoView({behavior:"smooth",block:"start"});}
+  try{const plan=await api("/api/plan",{method:"POST",body:{brief,style:state.style,ratio:state.ratio,use_llm:$("useLlm").checked,send_consent:$("llmConsent").checked,audio_mode:$("audioMode").value,characters:[$("characterA").value,$("characterB").value],dialogue_lines:[$("lineA").value,$("lineB").value]}});renderPlan(plan);$("storyboardSheet").scrollIntoView({behavior:"smooth",block:"start"});}
   catch(e){showError("formError",e.message);}
   finally{$("planButton").disabled=false;$("planButton").querySelector("span:not(.button-icon)").textContent="生成三镜头分镜";}
 }
@@ -100,7 +123,7 @@ async function submitVideo(){
   try{
     const plan=readPlan();
     if(state.mode==="kling"&&!$("paidConsent").checked)throw new Error("请先确认本次 AI 生成的费用及素材发送。");
-    const body={plan,mode:state.mode,reference_id:state.reference,voice:$("voiceSelect").value,paid_consent:state.mode==="kling"&&$("paidConsent").checked};
+    const body={plan,mode:state.mode,reference_id:state.reference,voice:$("voiceSelect").value||"zf_001",bgm_mode:$("bgmMode").value,bgm_id:state.bgm,bgm_prompt:$("bgmPrompt").value,bgm_volume:Number($("bgmVolume").value)/100,paid_consent:state.mode==="kling"&&$("paidConsent").checked};
     const fingerprint=JSON.stringify(body);
     if(state.creationPayload!==fingerprint){state.creationKey=crypto.randomUUID();state.creationPayload=fingerprint;}
     body.idempotency=state.creationKey;state.busy=true;$("renderButton").disabled=true;
@@ -147,7 +170,7 @@ async function resumeJob(){
   catch(e){toast(e.message);}finally{$("resumeButton").disabled=false;}
 }
 function startNewStory(){
-  stopPolling();state.plan=null;state.job=null;state.reference=null;state.creationKey=null;state.creationPayload=null;
+  stopPolling();state.plan=null;state.job=null;state.reference=null;state.bgm=null;state.creationKey=null;state.creationPayload=null;$("bgmMode").value="none";$("audioMode").value="narration";$("musicPlayer").pause();$("musicPlayer").removeAttribute("src");$("musicPreview").hidden=true;$("bgmInput").value="";updateSoundUI();
   localStorage.removeItem("yingke.lastJob");
   $("brief").value="";$("brief").dispatchEvent(new Event("input"));$("referenceInput").value="";
   $("uploadPreview").hidden=true;$("uploadZone").hidden=false;$("ideaSheet").hidden=false;$("storyboardSheet").hidden=true;
@@ -168,7 +191,7 @@ async function refreshHistory(){
   }catch(e){$("librarySummary").textContent=e.message;}
 }
 async function loadJob(id){
-  try{const job=await api("/api/jobs/"+id);showView("create");if(job.payload){state.reference=job.payload.reference_id;$("voiceSelect").value=job.payload.voice;renderPlan(job.payload.plan);chooseMode(job.mode);}showJob(job);
+  try{const job=await api("/api/jobs/"+id);showView("create");if(job.payload){state.reference=job.payload.reference_id;state.bgm=job.payload.bgm_id||null;$("bgmMode").value=job.payload.bgm_mode||"none";$("bgmPrompt").value=job.payload.plan.bgm_prompt||"温柔钢琴与弦乐，安静舒缓，纯器乐";$("bgmVolume").value=Math.round((job.payload.bgm_volume??0.2)*100);$("bgmVolumeLabel").textContent=$("bgmVolume").value+"%";if(job.payload.plan.characters){$("characterA").value=job.payload.plan.characters[0];$("characterB").value=job.payload.plan.characters[1];}$("voiceSelect").value=job.payload.voice;renderPlan(job.payload.plan);chooseMode(job.mode);}showJob(job);
     if(!["completed","failed","unknown","paused","cancelled"].includes(job.status))startPolling(id);
     else stopPolling();document.querySelector(".preview-column").scrollIntoView({behavior:"smooth",block:"start"});
   }catch(e){toast(e.message);}
@@ -197,6 +220,11 @@ $("brief").addEventListener("input",()=>{$("briefCount").textContent=$("brief").
 document.querySelectorAll("[data-style]").forEach(el=>el.addEventListener("click",()=>chooseStyle(el.dataset.style)));
 document.querySelectorAll("[data-ratio]").forEach(el=>el.addEventListener("click",()=>chooseRatio(el.dataset.ratio)));
 document.querySelectorAll("[data-example]").forEach(el=>el.addEventListener("click",()=>{const ex=examples[el.dataset.example];$("brief").value=ex.brief;$("brief").dispatchEvent(new Event("input"));chooseStyle(ex.style);$("ideaSheet").hidden=false;$("storyboardSheet").hidden=true;$("brief").focus();$("ideaSheet").scrollIntoView({behavior:"smooth",block:"start"});toast("灵感已填入，试着加一点自己的想法。");}));
+$("audioMode").addEventListener("change",updateSoundUI);
+$("bgmMode").addEventListener("change",updateSoundUI);
+$("bgmInput").addEventListener("change",e=>uploadMusic(e.target.files[0]));
+$("bgmVolume").addEventListener("input",()=>$("bgmVolumeLabel").textContent=$("bgmVolume").value+"%");
+$("removeMusic").addEventListener("click",()=>{state.bgm=null;$("musicPlayer").pause();$("musicPlayer").removeAttribute("src");$("musicPreview").hidden=true;$("bgmInput").value="";});
 $("referenceInput").addEventListener("change",e=>uploadFile(e.target.files[0]));
 $("uploadZone").addEventListener("dragover",e=>{e.preventDefault();$("uploadZone").classList.add("dragging");});
 $("uploadZone").addEventListener("dragleave",()=>$("uploadZone").classList.remove("dragging"));

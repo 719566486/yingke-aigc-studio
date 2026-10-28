@@ -37,7 +37,7 @@ def capabilities():
             "tts":media.TTS_PYTHON.exists() and bool(voices),
             "kling":providers.has_credentials(cfg),
             "llm":bool(cfg["llm_key"] and cfg["llm_model"]),
-            "voices":choices,"data_directory":str(store.DATA),"local_only":True}
+            "voices":choices,"native_audio":cfg["kling_model"]=="kling-v3","data_directory":str(store.DATA),"local_only":True}
 
 def public_job(job,detail=False):
     result={k:job[k] for k in ("id","created","updated","status","phase","message","mode","provider_id","error")}
@@ -121,6 +121,12 @@ def cleanup():
     for upload in store.UPLOADS.glob("*.jpg"):
         if upload.stem not in refs and upload.stat().st_mtime<cutoff: upload.unlink(missing_ok=True)
 
+    with store.connection() as db:
+        audio_refs={json.loads(r[0]).get("bgm_id") for r in db.execute("SELECT payload FROM jobs WHERE deleted=0")}
+    for upload in store.AUDIO_UPLOADS.glob("*.mp3"):
+        if upload.stem not in audio_refs and upload.stat().st_mtime<cutoff: upload.unlink(missing_ok=True)
+
+
 def worker():
     last_cleanup=0
     while not STOP.is_set():
@@ -171,6 +177,9 @@ class PlanInput(BaseModel):
     ratio:str="9:16"
     use_llm:bool=False
     send_consent:bool=False
+    audio_mode:str="narration"
+    characters:list[str]=Field(default_factory=lambda:["年轻男子，深色外套，声音温柔低沉","年轻女子，浅色连衣裙，声音轻柔"])
+    dialogue_lines:list[str]=Field(default_factory=lambda:["好久不见，你瘦了。","想你想的。"])
 
 class JobInput(BaseModel):
     plan:dict
@@ -179,6 +188,10 @@ class JobInput(BaseModel):
     voice:str="zf_001"
     idempotency:str=Field(min_length=16,max_length=80)
     paid_consent:bool=False
+    bgm_mode:str="none"
+    bgm_id:str|None=None
+    bgm_prompt:str=Field(default="温柔钢琴与弦乐，安静舒缓，纯器乐",max_length=160)
+    bgm_volume:float=Field(default=0.2,ge=0,le=0.8)
 
 class ResumeInput(BaseModel):
     provider_id:str|None=None
@@ -206,11 +219,21 @@ def plan(body:PlanInput):
     if body.style not in providers.STYLE or body.ratio not in {"9:16","16:9"}: raise HTTPException(400,"画风或画幅不正确。")
     cfg=configuration()
     try:
+        if body.audio_mode not in {"narration","dialogue","silent"}: raise HTTPException(400,"请选择人声方式。")
+        if len(body.characters)!=2 or any(not 1<=len(c.strip())<=120 for c in body.characters): raise HTTPException(400,"请填写两位角色的描述，每位最多120字。")
+        if len(body.dialogue_lines)!=2 or any(len(line)>32 for line in body.dialogue_lines): raise HTTPException(400,"请填写两句台词，每句最多32字。")
+        if body.audio_mode=="dialogue":
+            if not any(line.strip() for line in body.dialogue_lines): raise HTTPException(400,"请至少填写一句人物台词。")
+            return providers.make_template(body.brief,body.style,body.ratio,body.audio_mode,body.characters,body.dialogue_lines)
         if body.use_llm:
             if not body.send_consent: raise HTTPException(400,"请先确认向文本模型发送创意。")
             if not cfg["llm_key"] or not cfg["llm_model"]: raise HTTPException(400,"请先配置文本模型。")
-            return providers.plan_with_llm(body.brief,body.style,body.ratio,cfg)
-        return providers.make_template(body.brief,body.style,body.ratio)
+            result=providers.plan_with_llm(body.brief,body.style,body.ratio,cfg)
+            result["audio_mode"]=body.audio_mode
+            if body.audio_mode=="silent":
+                for shot in result["shots"]: shot["narration"]=""
+            return result
+        return providers.make_template(body.brief,body.style,body.ratio,body.audio_mode)
     except providers.ProviderError as exc: raise HTTPException(502,str(exc))
     except httpx.HTTPError: raise HTTPException(502,"文本模型暂时无法连接，请核对网络和服务地址。")
 
@@ -235,6 +258,35 @@ def uploaded_image(image_id:str):
     if not path.exists(): raise HTTPException(404,"参考图不存在。")
     return FileResponse(path,media_type="image/jpeg")
 
+@app.post("/api/audio-uploads")
+async def upload_audio(audio:UploadFile=File(...)):
+    if not (audio.filename or "").lower().endswith(".mp3"):
+        raise HTTPException(400,"背景音乐请上传MP3文件。")
+    raw=await audio.read(20*1024*1024+1)
+    if len(raw)>20*1024*1024: raise HTTPException(413,"背景音乐不能超过20MB。")
+    audio_id=uuid.uuid4().hex
+    path=store.AUDIO_UPLOADS/(audio_id+".mp3")
+    path.write_bytes(raw)
+    try:
+        info=media.probe(path)
+        streams=info["streams"]
+        seconds=float(info["format"]["duration"])
+        if not 1<=seconds<=600 or not any(s.get("codec_name")=="mp3" and s.get("codec_type")=="audio" for s in streams):
+            raise ValueError("Invalid MP3")
+        if any(s.get("codec_type")=="video" and not s.get("disposition",{}).get("attached_pic") for s in streams): raise ValueError("Not audio")
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise HTTPException(400,"无法读取该MP3，请选择1秒至10分钟的有效音乐文件。")
+    return {"id":audio_id,"url":"/api/audio-uploads/"+audio_id,"duration":round(seconds,2)}
+
+
+@app.get("/api/audio-uploads/{audio_id}")
+def uploaded_audio(audio_id:str):
+    path=store.AUDIO_UPLOADS/(valid_id(audio_id)+".mp3")
+    if not path.is_file(): raise HTTPException(404,"背景音乐已被清理，请重新上传。")
+    return FileResponse(path,media_type="audio/mpeg")
+
+
 @app.get("/api/jobs")
 def jobs(): return {"jobs":[public_job(j) for j in store.list_jobs()]}
 
@@ -248,8 +300,7 @@ def get_job(job_id:str):
 def create_job(body:JobInput):
     if body.mode not in {"preview","kling"}: raise HTTPException(400,"生成模式不正确。")
     caps=capabilities(); cfg=configuration()
-    if not caps["tts"] or not caps["ffmpeg"]: raise HTTPException(400,"本地配音或视频合成工具不可用，请查看服务配置。")
-    if body.voice not in caps["voices"]: raise HTTPException(400,"所选音色不可用。")
+    if not caps["ffmpeg"]: raise HTTPException(400,"视频合成工具不可用，请查看服务配置。")
     if body.reference_id and not (store.UPLOADS/(valid_id(body.reference_id)+".jpg")).exists(): raise HTTPException(400,"请重新上传参考图。")
     if body.mode=="kling":
         if not caps["kling"]: raise HTTPException(400,"请先配置可灵开放平台凭证。")
@@ -260,7 +311,18 @@ def create_job(body:JobInput):
     if style not in providers.STYLE or ratio not in {"9:16","16:9"}: raise HTTPException(400,"分镜画风或画幅不正确。")
     validated.update(style=style,ratio=ratio,brief=str(body.plan.get("brief",""))[:300],
                      planner=body.plan.get("planner","template"),planner_label=body.plan.get("planner_label","分镜"))
-    payload={"plan":validated,"voice":body.voice,"reference_id":body.reference_id,"paid_consent":body.paid_consent}
+    if validated["audio_mode"]=="narration" and any(s["narration"] for s in validated["shots"]):
+        if not caps["tts"] or body.voice not in caps["voices"]: raise HTTPException(400,"旁白音色不可用，请选择不加人声或检查配音服务。")
+    if body.bgm_mode not in {"none","upload","ai"}: raise HTTPException(400,"配乐方式不正确。")
+    if body.bgm_mode=="upload" and (not body.bgm_id or not (store.AUDIO_UPLOADS/(valid_id(body.bgm_id)+".mp3")).is_file()):
+        raise HTTPException(400,"请上传一首MP3背景音乐。")
+    if body.bgm_mode=="ai" and body.mode!="kling": raise HTTPException(400,"AI自动配乐随可灵视频一同生成，请选择AI动态短片；免费预演可不配乐或上传MP3。")
+    validated.update(bgm_mode=body.bgm_mode,bgm_prompt=body.bgm_prompt)
+    if body.mode=="kling":
+        try: providers.request_body(validated,cfg,"check-only" if body.reference_id else None)
+        except providers.ProviderError as exc: raise HTTPException(400,str(exc))
+    payload={"plan":validated,"voice":body.voice,"reference_id":body.reference_id,"paid_consent":body.paid_consent,
+             "bgm_mode":body.bgm_mode,"bgm_id":body.bgm_id if body.bgm_mode=="upload" else None,"bgm_volume":body.bgm_volume}
     try: job,new=store.create_job(payload,body.mode,body.idempotency,cfg["daily_limit"])
     except ValueError as exc: raise HTTPException(409,str(exc))
     if new: TASKS.put(job["id"])

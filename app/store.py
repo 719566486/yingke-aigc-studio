@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("STUDIO_DATA_DIR", str(ROOT / "data"))).resolve()
 JOBS = DATA / "jobs"
 UPLOADS = DATA / "uploads"
-for folder in (DATA, JOBS, UPLOADS, ROOT / "work"):
+AUDIO_UPLOADS = DATA / "audio-uploads"
+for folder in (DATA, JOBS, UPLOADS, AUDIO_UPLOADS, ROOT / "work"):
     folder.mkdir(parents=True, exist_ok=True)
 DB = DATA / "studio.sqlite3"
 CONFIG = DATA / "settings.json"

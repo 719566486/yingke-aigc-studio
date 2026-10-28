@@ -111,7 +111,7 @@ def normalize_audio(folder):
     matches=re.findall(r"\{[^{}]+\}",logs)
     if not matches: raise RuntimeError("没有收到音量检测结果。")
     stats=json.loads(matches[-1])
-    if stats["input_i"] in {"-inf","inf"}: raise RuntimeError("人声轨道为空，不能输出无声成片。")
+    if stats["input_i"] in {"-inf","inf"}: raise RuntimeError("音轨为空，未得到所选的声音。")
     af=("loudnorm=I=-16:TP=-1.5:LRA=11:"
         f"measured_I={stats['input_i']}:measured_TP={stats['input_tp']}:"
         f"measured_LRA={stats['input_lra']}:measured_thresh={stats['input_thresh']}:"
@@ -122,81 +122,5 @@ def normalize_audio(folder):
     (folder/"loudness.json").write_text(json.dumps({"before":stats,"target_lufs":-16,"target_true_peak_db":-1.5},indent=2),encoding="utf-8")
 
 def build_video(job,config,progress):
-    folder=JOBS/job["id"]; folder.mkdir(exist_ok=True)
-    payload=job["payload"]; plan=payload["plan"]
-    (folder/"storyboard.json").write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding="utf-8")
-    w,h=(720,1280) if plan["ratio"]=="9:16" else (1280,720)
-    reference=UPLOADS/(payload["reference_id"]+".jpg") if payload.get("reference_id") else None
-    if reference and not reference.exists(): raise RuntimeError("参考图已删除，请重新上传。")
-    if job["mode"]=="preview":
-        for i,shot in enumerate(plan["shots"],1):
-            make_card(plan,shot,folder/f"scene{i}.jpg",reference)
-        with Image.open(folder/"scene1.jpg") as cover:
-            cover.save(folder/"cover.jpg",quality=92)
-    else:
-        run([FFMPEG,"-loglevel","error","-y","-ss","1","-i","source.mp4","-frames:v","1","cover.jpg"],folder)
-    for i in range(1,4):
-        path=folder/f"voice{i}.wav"
-        if path.exists():
-            try:
-                good=path.stat().st_size>100 and duration(path)>0.1
-            except Exception:
-                good=False
-            if not good:
-                path.unlink(missing_ok=True)
-                path.with_suffix(".json").unlink(missing_ok=True)
-    progress("voice","正在生成中文配音（本地 Kokoro）")
-    pending=[{"text":shot["narration"],"voice":payload["voice"],"output":str(folder/f"voice{i}.wav")}
-             for i,shot in enumerate(plan["shots"],1) if not (folder/f"voice{i}.wav").exists()]
-    if pending:
-        manifest=folder/"voice-tasks.json"
-        manifest.write_text(json.dumps(pending,ensure_ascii=False),encoding="utf-8")
-        with TTS_LOCK:
-            run([TTS_PYTHON,"-B",ROOT/"app/tts_batch.py","--manifest",manifest,
-                 "--root",TTS_ROOT,"--device",config["tts_device"]],folder,timeout=360)
-    for i in range(1,4):
-        if not (folder/f"voice{i}.wav").exists() or duration(folder/f"voice{i}.wav")<=0.1:
-            raise RuntimeError(f"第 {i} 段配音未完成，请继续处理已有任务。")
-    progress("voice","三段配音已完成，准备按镜头对齐")
-    source=folder/"source.mp4"
-    if job["mode"]=="kling":
-        if not source.exists(): raise RuntimeError("缺少可灵源视频，任务尚未完成生成。")
-        if duration(source)<14.8: raise RuntimeError("可灵源视频不足 15 秒，未通过时长检查。")
-    progress("composing","正在对齐镜头、声音与字幕")
-    for i,shot in enumerate(plan["shots"],1):
-        voice=folder/f"voice{i}.wav"; voice_duration=duration(voice)
-        tempo=max(1.0,voice_duration/4.7)
-        if tempo>2.5: raise RuntimeError(f"第 {i} 段旁白太长，请缩短旁白后创建新任务。")
-        ass=folder/f"captions{i}.ass"; write_subtitle(ass,shot,w,h)
-        if job["mode"]=="preview":
-            inputs=["-loop","1","-framerate","24","-i",f"scene{i}.jpg","-i",f"voice{i}.wav"]
-            vf=f"scale={w}:{h},zoompan=z='min(zoom+0.00012,1.018)':d=1:s={w}x{h}:fps=24,subtitles=captions{i}.ass,format=yuv420p"
-        else:
-            inputs=["-ss",str((i-1)*5),"-i","source.mp4","-i",f"voice{i}.wav"]
-            vf=f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,subtitles=captions{i}.ass,format=yuv420p"
-        filters=f"[0:v]{vf}[v];[1:a]atempo={tempo:.5f},aresample=48000,apad,atrim=duration=5,alimiter=limit=0.89[a]"
-        run([FFMPEG,"-hide_banner","-loglevel","error","-y",*inputs,"-filter_complex",filters,
-             "-map","[v]","-map","[a]","-t","5","-r","24","-c:v","libx264","-preset","fast","-crf","21",
-             "-c:a","aac","-b:a","128k","-ac","2","-movflags","+faststart",f"clip{i}.mp4"],folder)
-        progress("composing",f"已合成第 {i}/3 个镜头")
-    (folder/"concat.txt").write_text("".join(f"file 'clip{i}.mp4'\n" for i in range(1,4)),encoding="utf-8")
-    run([FFMPEG,"-hide_banner","-loglevel","error","-y","-f","concat","-safe","0","-i","concat.txt",
-         "-c","copy","-movflags","+faststart","final.tmp.mp4"],folder)
-    progress("composing","正在统一人声音量")
-    normalize_audio(folder)
-    progress("verifying","正在检查视频与音频")
-    info=probe(folder/"final.tmp.mp4")
-    streams=info["streams"]; actual=float(info["format"]["duration"])
-    if not 14.9<=actual<=15.2 or not any(x["codec_type"]=="audio" for x in streams):
-        raise RuntimeError("成片时长或音频检查未通过。")
-    run([FFMPEG,"-v","error","-i","final.tmp.mp4","-f","null","-"],folder)
-    os.replace(folder/"final.tmp.mp4",folder/"final.mp4")
-    if job["mode"]=="kling":
-        run([FFMPEG,"-loglevel","error","-y","-ss","1","-i","final.mp4","-frames:v","1","cover.jpg"],folder)
-    srt=""
-    for i,shot in enumerate(plan["shots"]):
-        srt+=f"{i+1}\n{srt_time(i*5)} --> {srt_time(i*5+4.9)}\n{shot['narration']}\n\n"
-    (folder/"subtitles.srt").write_text(srt,encoding="utf-8-sig")
-    report={"duration":actual,"mode":job["mode"],"resolution":f"{w}x{h}","fps":24,
-            "technical_check":"passed","visual_review":"需由用户预览验收"}
-    (folder/"qa.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+    from .composition import build_video as compose
+    return compose(job,config,progress)

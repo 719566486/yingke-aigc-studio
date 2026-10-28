@@ -16,11 +16,11 @@ def fetch(item):
     title=title.replace(' ','_');md5=hashlib.md5(title.encode()).hexdigest()
     url=f'https://upload.wikimedia.org/wikipedia/commons/{md5[0]}/{md5[:2]}/{quote(title)}'
     if key=='cinema':url=f'https://thumb.wikimedia.org/wikipedia/commons/thumb/{md5[0]}/{md5[:2]}/{quote(title)}/960px-{quote(title)}'
-    with httpx.Client(timeout=35,follow_redirects=True,headers={'User-Agent':'YingkeStudio/1.0 (style reference; educational web app)'}) as client:
+    with httpx.Client(timeout=35,follow_redirects=True,headers={'User-Agent':'YingkeStudio/1.0 (https://github.com/719566486/yingke-aigc-studio; licensed style reference downloader)'}) as client:
         r=client.get(url);r.raise_for_status();assert r.headers.get('content-type','').startswith('image/')
     (DEST/(key+'.jpg')).write_bytes(r.content)
     return {'style':key,'file':key+'.jpg','source':'https://commons.wikimedia.org/wiki/File:'+quote(title),'author':author,'license':license_url,'modifications':'Displayed with CSS cropping only; source image not edited.'}
-with ThreadPoolExecutor(max_workers=3) as pool:
+with ThreadPoolExecutor(max_workers=2) as pool:
     entries=list(pool.map(fetch,SOURCES))
 with httpx.Client(timeout=35,follow_redirects=True) as client:
     r=client.get('https://collectionapi.metmuseum.org/public/collection/v1/objects/49175');r.raise_for_status();obj=r.json();assert obj['isPublicDomain']

@@ -12,5 +12,20 @@ services:
     volumes:
       - studio-data:/app/data
     stop_grace_period: 45s
+  https:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: ./data/cloud.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - studio
 volumes:
   studio-data:
+  caddy-data:
+  caddy-config:

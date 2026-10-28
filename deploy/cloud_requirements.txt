@@ -3,3 +3,4 @@ misaki[en,zh]==0.9.4
 soundfile>=0.13,<0.15
 huggingface-hub>=0.34,<1
 numpy>=1.26,<3
+transformers==4.57.3

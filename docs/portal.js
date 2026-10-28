@@ -7,7 +7,9 @@ async function connect(){
   try{config=await fetch("https://raw.githubusercontent.com/719566486/yingke-aigc-studio/main/docs/connection.json?t="+Date.now(),{cache:"no-store",signal:AbortSignal.timeout(6000)}).then(r=>{if(!r.ok)throw Error();return r.json();});}
   catch(error){config=await fetch("connection.json?t="+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw Error();return r.json();});}
   const url=new URL(config.url);
-  if(url.protocol!=="https:"||!/(\.trycloudflare\.com|\.lhr\.life|\.localhost\.run)$/.test(url.hostname))throw Error();
+  const temporary=/(\.trycloudflare\.com|\.lhr\.life|\.localhost\.run)$/.test(url.hostname);
+  const cloud=config.mode==="cloud"&&config.hostname===url.hostname&&/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}$/.test(url.hostname);
+  if(url.protocol!=="https:"||(!temporary&&!cloud))throw Error();
   const ping=await fetch(url.origin+"/api/share/ping",{cache:"no-store",signal:AbortSignal.timeout(8000)}).then(r=>r.json());
   if(!ping.online)throw Error();
   const target=url.origin+"/#access="+encodeURIComponent(config.access);

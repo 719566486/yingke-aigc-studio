@@ -1,0 +1,4 @@
+{$STUDIO_PUBLIC_HOSTS} {
+    encode gzip
+    reverse_proxy studio:8080
+}

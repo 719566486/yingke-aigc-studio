@@ -1,0 +1,17 @@
+.venv/
+data/
+work/
+__pycache__/
+.pytest_cache/
+*.log
+outputs/
+*.docx
+*.pdf
+*.zip
+*.mp4
+*.wav
+*.srt
+.env
+.env.*
+*.pem
+*.key

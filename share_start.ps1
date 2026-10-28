@@ -1,0 +1,20 @@
+$ErrorActionPreference='Stop'
+$StudioRoot=$PSScriptRoot
+$StudioPid=Join-Path $StudioRoot 'work\share-supervisor.pid'
+$StudioPython=Join-Path $StudioRoot '.venv\Scripts\python.exe'
+$running=$false
+if(Test-Path -LiteralPath $StudioPid){
+  $savedId=[int](Get-Content -LiteralPath $StudioPid -Raw)
+  $saved=Get-CimInstance Win32_Process -Filter "ProcessId=$savedId" -ErrorAction SilentlyContinue
+  $running=$saved -and $saved.ExecutablePath -eq $StudioPython -and $saved.CommandLine -match 'share_runner\.py'
+}
+if(-not $running){
+  $env:TEMP=Join-Path $StudioRoot 'work'
+  $env:TMP=$env:TEMP
+  $env:PYTHONIOENCODING='utf-8'
+  $env:PYTHONDONTWRITEBYTECODE='1'
+  Start-Process -FilePath $StudioPython -ArgumentList @('-B','deploy/share_runner.py') -WorkingDirectory $StudioRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $StudioRoot 'work\share-supervisor.out.log') -RedirectStandardError (Join-Path $StudioRoot 'work\share-supervisor.err.log') | Out-Null
+}
+Write-Output 'Sharing is starting. Keep this computer awake.'
+Write-Output 'Entry: https://719566486.github.io/yingke-aigc-studio/'
+if($env:STUDIO_NO_BROWSER -ne '1'){Start-Process 'https://719566486.github.io/yingke-aigc-studio/'}

@@ -12,7 +12,7 @@ async function connect(){
   if(url.protocol!=="https:"||(!temporary&&!cloud))throw Error();
   const ping=await fetch(url.origin+"/api/share/ping",{cache:"no-store",signal:AbortSignal.timeout(8000)}).then(r=>r.json());
   if(!ping.online)throw Error();
-  const target=url.origin+"/#access="+encodeURIComponent(config.access);
+  const target=url.origin+"/";
   const enter=document.getElementById("enter");enter.href=target;enter.hidden=false;
   status.textContent="工作室已就绪";message.textContent="正在进入创作体验…";location.replace(target);
  }catch(e){status.textContent="主办方暂未开启创作服务";message.textContent="可以稍后再试，或联系主办方开启工作室。";spinner.hidden=true;retry.hidden=false;}

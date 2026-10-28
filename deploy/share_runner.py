@@ -11,7 +11,6 @@ import httpx
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from app.share import share_code
 
 WORK = ROOT / "work"
 STATE = ROOT / "data/sharing-state.json"
@@ -104,7 +103,7 @@ def main():
                     continue
                 state.update(url=address, online=True, message="Public visitor connection ready")
                 save(state)
-                (ROOT / "docs/connection.json").write_text(json.dumps({"url": address, "access": share_code()}, ensure_ascii=False, indent=2), encoding="utf-8")
+                (ROOT / "docs/connection.json").write_text(json.dumps({"url": address}, ensure_ascii=False, indent=2), encoding="utf-8")
                 print("Visitor connection ready:", address, flush=True)
             # The free relay can rotate its domain without ending the SSH process.
             log = (WORK / "sharing-tunnel.log").read_text(encoding="utf-8", errors="replace")
@@ -112,7 +111,7 @@ def main():
             if current_urls and current_urls[-1] != state["url"]:
                 state.update(url=current_urls[-1], online=True, message="Public visitor address refreshed")
                 save(state)
-                (ROOT / "docs/connection.json").write_text(json.dumps({"url": state["url"], "access": share_code()}, ensure_ascii=False, indent=2), encoding="utf-8")
+                (ROOT / "docs/connection.json").write_text(json.dumps({"url": state["url"]}, ensure_ascii=False, indent=2), encoding="utf-8")
                 print("Visitor address refreshed:", state["url"], flush=True)
             if (ROOT / "data/github-publication.json").exists() and not (WORK / "pause-publication").exists() and state["url"] != published_url and time.time() >= retry_at:
                 health = ready(state["url"] + "/api/share/ping")

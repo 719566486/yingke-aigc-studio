@@ -16,7 +16,7 @@ with httpx.Client(timeout=30) as client:
         time.sleep(2)
     else:
         raise RuntimeError("Cloud worker did not become ready")
-    r=client.post(base+"/api/share/login", json={"code":"cloud-smoke-test"}, headers={"Origin":base});r.raise_for_status()
+    r=client.post(base+"/api/share/start", headers={"Origin":base});r.raise_for_status()
     boot=client.get(base+"/api/bootstrap").json()
     assert boot["capabilities"]["tts"] and boot["capabilities"]["ffmpeg"]
     assert client.get(base+"/api/settings").status_code==403

@@ -16,8 +16,6 @@ services:
     envVars:
       - key: STUDIO_MASTER_KEY
         generateValue: true
-      - key: STUDIO_SHARE_CODE
-        generateValue: true
       - key: STUDIO_KLING_API_KEY
         sync: false
       - key: STUDIO_KLING_BASE

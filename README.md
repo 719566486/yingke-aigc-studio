@@ -20,7 +20,7 @@
 
 可选的官方 cloudflared 程序放在 work/tools/cloudflared.exe 或通过 STUDIO_CLOUDFLARED 指定。它不进入源码仓库，官方下载地址为 https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe 。没有该程序时仍可使用 SSH 备用连接。
 
-GitHub只上传应用源码、测试和访问入口文件。data、work、.venv、outputs、API密钥、数据库、用户图片及成片均不上传。公开入口中的体验码只授权受额度限制的访客创作，不是可灵API密钥。密钥仍由本机Windows用户加密保护。
+GitHub只上传应用源码、测试和访问入口文件。data、work、.venv、outputs、API密钥、数据库、用户图片及成片均不上传。访客点开分享网址即可直接进入，无需输入体验码。系统自动为每个浏览器建立独立会话并限制生成额度。密钥仍由本机Windows用户加密保护。
 
 新的电脑需要先建立Python环境并配置本地配音与FFmpeg，再在管理员工作台填写自己的服务凭证；源码本身不包含原电脑的任何凭证。
 

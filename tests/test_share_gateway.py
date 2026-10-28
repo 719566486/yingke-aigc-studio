@@ -47,7 +47,34 @@ def submission(key=None, mode="kling"):
     return {"idempotency": key or uuid.uuid4().hex, "mode": mode, "paid_consent": True, "plan": {"title": "visitor story"}}
 
 
-def test_visitors_need_invitation_and_never_receive_admin_token(sharing):
+def test_direct_entry_preserves_session_and_quota(sharing):
+    with TestClient(share.app) as client:
+        response = client.post("/api/share/start")
+        assert response.status_code == 200
+        assert "HttpOnly" in response.headers["set-cookie"]
+        cookie = client.cookies.get(share.COOKIE)
+        token = client.get("/api/bootstrap").json()["token"]
+        headers = {"X-Studio-Token": token}
+        assert client.post("/api/jobs", headers=headers, json=submission()).status_code == 200
+        assert client.post("/api/share/start").status_code == 200
+        assert client.cookies.get(share.COOKIE) == cookie
+        assert client.get("/api/bootstrap").json()["token"] == token
+        assert client.post("/api/jobs", headers=headers, json=submission()).status_code == 429
+
+
+def test_direct_entry_keeps_origin_and_ownership_checks(sharing):
+    with TestClient(share.app) as first, TestClient(share.app) as second:
+        assert first.post("/api/share/start", headers={"Origin": "https://other.example"}).status_code == 403
+        assert first.post("/api/share/start").status_code == 200
+        assert second.post("/api/share/start").status_code == 200
+        token = first.get("/api/bootstrap").json()["token"]
+        assert "CORE_ONLY_SECRET" not in first.get("/api/bootstrap").text
+        made = first.post("/api/jobs", headers={"X-Studio-Token": token}, json=submission()).json()
+        assert second.get("/api/jobs/" + made["id"]).status_code == 404
+        assert second.get("/api/settings").status_code == 403
+
+
+def test_legacy_login_validates_code_and_never_returns_admin_token(sharing):
     with TestClient(share.app) as client:
         assert client.get("/api/bootstrap").status_code == 401
         assert client.post("/api/share/login", json={"code": "wrong-code"}).status_code == 401

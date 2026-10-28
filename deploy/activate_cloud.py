@@ -1,6 +1,5 @@
 """Verify a real cloud preview before moving the existing GitHub entry."""
 from pathlib import Path
-import getpass
 import json
 import subprocess
 import sys
@@ -12,13 +11,13 @@ import httpx
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def verify(url, code):
+def verify(url):
     with httpx.Client(timeout=40, follow_redirects=False) as client:
         ping = client.get(url + "/api/share/ping")
         ping.raise_for_status()
         if not ping.json().get("online"):
             raise RuntimeError("云端生成后台尚未就绪。")
-        response = client.post(url + "/api/share/login", json={"code": code}, headers={"Origin": url})
+        response = client.post(url + "/api/share/start", headers={"Origin": url})
         response.raise_for_status()
         boot = client.get(url + "/api/bootstrap")
         boot.raise_for_status()
@@ -59,17 +58,14 @@ def main():
     parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.port not in {None, 443} or parsed.path or parsed.query or parsed.fragment:
         raise RuntimeError("请填写云平台提供的网址，格式为 https://你的服务域名")
-    code = getpass.getpass("云平台 STUDIO_SHARE_CODE 体验码：").strip()
-    if not code:
-        raise RuntimeError("体验码不能为空。")
-    report = verify(url, code)
+    report = verify(url)
     pointer = ROOT / "docs/connection.json"
     previous = pointer.read_bytes()
     pause = ROOT / "work/pause-publication"
     own_pause = not pause.exists()
     pause.write_text("Activating verified cloud backend", encoding="ascii")
     try:
-        pointer.write_text(json.dumps({"mode": "cloud", "hostname": parsed.hostname, "url": url, "access": code}, ensure_ascii=False, indent=2), encoding="utf-8")
+        pointer.write_text(json.dumps({"mode": "cloud", "hostname": parsed.hostname, "url": url}, ensure_ascii=False, indent=2), encoding="utf-8")
         result = subprocess.run([sys.executable, "-B", str(ROOT / "deploy/publish_github.py")], cwd=ROOT, capture_output=True)
         if result.returncode:
             pointer.write_bytes(previous)

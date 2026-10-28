@@ -67,7 +67,7 @@ def share_code():
 def visitor(request: Request):
     raw = request.cookies.get(COOKIE, "")
     if not raw:
-        raise HTTPException(401, "请先输入主办方提供的体验码。")
+        raise HTTPException(401, "体验会话尚未就绪，请刷新页面。")
     digest = hashlib.sha256(raw.encode()).hexdigest()
     with db() as handle:
         row = handle.execute("SELECT * FROM sessions WHERE id=? AND expires>?", (digest, time.time())).fetchone()
@@ -125,7 +125,7 @@ async def guest_security(request, call_next):
         origin = request.headers.get("origin")
         if origin and urlparse(origin).netloc != request.headers.get("host"):
             return JSONResponse({"detail": "跨站请求已拒绝。"}, 403)
-    if path.startswith("/api/") and path not in {"/api/share/login", "/api/share/status", "/api/share/ping"}:
+    if path.startswith("/api/") and path not in {"/api/share/start", "/api/share/login", "/api/share/status", "/api/share/ping"}:
         try:
             session = visitor(request)
             if request.method not in {"GET", "HEAD"} and not secrets.compare_digest(session["csrf"], request.headers.get("x-studio-token", "")):
@@ -149,6 +149,30 @@ class Login(BaseModel):
     code: str = Field(min_length=4, max_length=200)
 
 
+def guest_session(request: Request):
+    # Refreshing or retrying initialization must preserve ownership and quotas.
+    try:
+        visitor(request)
+        return JSONResponse({"ok": True})
+    except HTTPException:
+        pass
+    raw = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(raw.encode()).hexdigest()
+    csrf = secrets.token_urlsafe(32)
+    with db() as handle:
+        handle.execute("DELETE FROM sessions WHERE expires<?", (time.time(),))
+        handle.execute("INSERT INTO sessions(id,csrf,expires) VALUES(?,?,?)", (digest, csrf, time.time() + 7 * 86400))
+    response = JSONResponse({"ok": True})
+    public_host = request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}
+    response.set_cookie(COOKIE, raw, max_age=7 * 86400, httponly=True, secure=public_host or request.url.scheme == "https", samesite="lax")
+    return response
+
+
+@app.post("/api/share/start")
+def start_experience(request: Request):
+    return guest_session(request)
+
+
 @app.post("/api/share/login")
 def login(body: Login, request: Request):
     ip = hashlib.sha256((request.client.host if request.client else "unknown").encode()).hexdigest()
@@ -160,15 +184,7 @@ def login(body: Login, request: Request):
         handle.execute("INSERT INTO attempts(ip,at) VALUES(?,?)", (ip, time.time()))
     if not secrets.compare_digest(body.code, share_code()):
         raise HTTPException(401, "体验码不正确，请重新打开主办方分享的链接。")
-    raw = secrets.token_urlsafe(32)
-    digest = hashlib.sha256(raw.encode()).hexdigest()
-    csrf = secrets.token_urlsafe(32)
-    with db() as handle:
-        handle.execute("INSERT INTO sessions(id,csrf,expires) VALUES(?,?,?)", (digest, csrf, time.time() + 7 * 86400))
-    response = JSONResponse({"ok": True})
-    public_host = request.url.hostname not in {"127.0.0.1", "localhost", "testserver"}
-    response.set_cookie(COOKIE, raw, max_age=7 * 86400, httponly=True, secure=public_host or request.url.scheme == "https", samesite="lax")
-    return response
+    return guest_session(request)
 
 
 @app.get("/api/share/status")

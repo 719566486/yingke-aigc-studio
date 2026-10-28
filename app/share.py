@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .store import ROOT, DATA, JOBS, UPLOADS, protect
+from .ui import version_assets
 
 CORE = "http://127.0.0.1:8787"
 DB = DATA / "share.sqlite3"
@@ -137,8 +138,10 @@ async def guest_security(request, call_next):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
-    if path.startswith("/api/"):
+    if path.startswith("/api/") or path in {"/", "/index.html"}:
         response.headers["Cache-Control"] = "no-store"
+    elif path.endswith((".css", ".js")):
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
@@ -323,11 +326,11 @@ def no_admin(rest: str = ""):
 @app.get("/")
 def index():
     html = (ROOT / "static/index.html").read_text(encoding="utf-8")
-    html = html.replace('<script src="/app.js" defer>', '<link rel="stylesheet" href="/share.css"><script src="/share-client.js" defer></script><script src="/app.js" defer>')
+    html = re.sub(r'<script src="/app\.js(?:\?[^"]*)?" defer>', lambda match: '<link rel="stylesheet" href="/share.css"><script src="/share-client.js" defer></script>' + match.group(0), html, count=1)
     html = html.replace('id="navSettings"', 'id="navSettings" hidden')
     html = html.replace("本机工作室", "活动体验工作室").replace("本地创作者", "体验创作者").replace("作品保存在这台电脑", "独立的创作与作品空间").replace("本机体验版", "分享体验版")
     html = html.replace("同意将创意和参考图发送至可灵，并按开放平台价格消耗本次生成额度。", "同意将创意和参考图发送至可灵，本次制作使用主办方提供的活动额度。")
-    return HTMLResponse(html)
+    return HTMLResponse(version_assets(html))
 
 
 app.mount("/", StaticFiles(directory=ROOT / "static"), name="visitor-ui")

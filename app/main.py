@@ -5,12 +5,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 import httpx
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from PIL import Image, ImageOps, UnidentifiedImageError
 from . import store, providers, media
+from .ui import version_assets
 
 TOKEN=secrets.token_urlsafe(32)
 TASKS=queue.Queue()
@@ -158,7 +159,10 @@ async def local_security(request,call_next):
     response.headers["Referrer-Policy"]="same-origin"
     response.headers["X-Frame-Options"]="DENY"
     response.headers["Content-Security-Policy"]="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
-    if request.url.path.startswith("/api/"): response.headers["Cache-Control"]="no-store"
+    if request.url.path.startswith("/api/") or request.url.path in {"/", "/index.html"}:
+        response.headers["Cache-Control"]="no-store"
+    elif request.url.path.endswith((".css", ".js")):
+        response.headers["Cache-Control"]="no-cache"
     return response
 
 class PlanInput(BaseModel):
@@ -330,5 +334,10 @@ def check_connection():
     try: return providers.check_kling(cfg)
     except (providers.ProviderError,httpx.HTTPError) as exc:
         raise HTTPException(502,str(exc) if isinstance(exc,providers.ProviderError) else "无法连接可灵，请检查网络和 API 地区。")
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    return HTMLResponse(version_assets((store.ROOT / "static/index.html").read_text(encoding="utf-8")))
+
 
 app.mount("/",StaticFiles(directory=store.ROOT/"static",html=True),name="ui")

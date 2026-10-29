@@ -36,6 +36,22 @@ def ready(url):
         return None
 
 
+class ConnectionHealth:
+    """A live process is not proof that its public address still works."""
+    def __init__(self, started):
+        self.started = started
+        self.failures = 0
+        self.was_ready = False
+
+    def observe(self, online, now):
+        if online:
+            self.was_ready = True
+            self.failures = 0
+            return False
+        self.failures += 1
+        return self.failures >= 3 and (self.was_ready or now - self.started >= 90)
+
+
 def main():
     WORK.mkdir(exist_ok=True)
     cloud_state = ROOT / "data/cloud-deployment.json"
@@ -68,6 +84,8 @@ def main():
     retry_at = 0
     cloud_attempted = False
     connection_started = 0
+    next_health_check = 0
+    health = None
     try:
         while not STOP.exists():
             if tunnel is None or tunnel.poll() is not None:
@@ -84,6 +102,8 @@ def main():
                     tunnel = subprocess.Popen(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT, creationflags=FLAGS)
                 state.update(tunnel_pid=tunnel.pid, online=False, provider=provider)
                 connection_started = time.time()
+                health = ConnectionHealth(connection_started)
+                next_health_check = 0
                 save(state)
                 address = None
                 for _ in range(45):
@@ -101,7 +121,7 @@ def main():
                     save(state)
                     time.sleep(5)
                     continue
-                state.update(url=address, online=True, message="Public visitor connection ready")
+                state.update(url=address, online=False, message="Checking public visitor connection")
                 save(state)
                 (ROOT / "docs/connection.json").write_text(json.dumps({"url": address}, ensure_ascii=False, indent=2), encoding="utf-8")
                 print("Visitor connection ready:", address, flush=True)
@@ -113,16 +133,37 @@ def main():
                 save(state)
                 (ROOT / "docs/connection.json").write_text(json.dumps({"url": state["url"]}, ensure_ascii=False, indent=2), encoding="utf-8")
                 print("Visitor address refreshed:", state["url"], flush=True)
+                health = ConnectionHealth(time.time())
+                next_health_check = 0
+                published_url = None
+            if time.time() >= next_health_check:
+                now = time.time()
+                probe = ready(state["url"] + "/api/share/ping")
+                online = bool(probe and probe.get("online"))
+                restart = health.observe(online, now)
+                state.update(online=online, checked_at=now,
+                             message="Public visitor connection ready" if online else "Public connection unavailable; reconnecting automatically")
+                save(state)
+                next_health_check = now + 15
+                if online:
+                    cloud_attempted = False
+                if restart:
+                    # An expired quick tunnel can keep retrying forever without exiting.
+                    tunnel.terminate()
+                    cloud_attempted = False
+                    published_url = None
+                    retry_at = 0
+                    continue
             if (ROOT / "data/github-publication.json").exists() and not (WORK / "pause-publication").exists() and state["url"] != published_url and time.time() >= retry_at:
-                health = ready(state["url"] + "/api/share/ping")
-                if not health or not health.get("online"):
-                    if provider == "cloudflare" and time.time() - connection_started > 60:
-                        tunnel.terminate()
-                    retry_at = time.time() + 5
+                if not state["online"]:
                     time.sleep(1)
                     continue
-                result = subprocess.run([str(PYTHON), "-B", str(ROOT / "deploy/publish_github.py")], cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", timeout=200, creationflags=FLAGS)
-                if result.returncode == 0:
+                try:
+                    result = subprocess.run([str(PYTHON), "-B", str(ROOT / "deploy/publish_github.py")], cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", timeout=200, creationflags=FLAGS)
+                    synchronized = result.returncode == 0
+                except subprocess.TimeoutExpired:
+                    synchronized = False
+                if synchronized:
                     published_url = state["url"]
                     state["published_at"] = time.time()
                     state["publication_message"] = "Stable GitHub entry updated"

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from app import store
 from github_auth import token
+from github_fallback import publish_tree
 
 PROJECT = json.loads((ROOT / "deploy/project.json").read_text(encoding="utf-8"))
 OWNER, REPO = PROJECT["owner"], PROJECT["repository"]
@@ -20,10 +21,10 @@ DESCRIPTION = "映刻 AIGC 创作体验平台：GitHub 访问入口与本机生�
 ALLOWED = ["app", "static", "tests", "deploy", "docs", ".github/workflows", "Dockerfile", ".dockerignore", "compose.yaml", "render.yaml", ".gitignore", "README.md", "requirements.txt", "requirements-lock.txt", "run.py", "run_share.py", "start.ps1", "stop.ps1", "启动平台.cmd", "停止平台.cmd", "share_start.ps1", "share_stop.ps1", "启动分享.cmd", "停止分享.cmd"]
 
 
-def git(*arguments, check=True):
+def git(*arguments, check=True, timeout=150):
     env = os.environ.copy()
     env.update(GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never", PYTHONIOENCODING="utf-8")
-    result = subprocess.run(["git", "-c", "core.quotepath=false", "-c", "http.version=HTTP/1.1", *arguments], cwd=ROOT, capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=150,
+    result = subprocess.run(["git", "-c", "core.quotepath=false", "-c", "http.version=HTTP/1.1", *arguments], cwd=ROOT, capture_output=True, encoding="utf-8", errors="replace", env=env, timeout=timeout,
                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
     if check and result.returncode:
         raise RuntimeError("Git operation failed: " + result.stderr[-1200:])
@@ -91,7 +92,11 @@ def publish(initial=False):
             if not initial:
                 args.extend(["--", "docs/connection.json"])
             git(*args)
-        git("push", "-u", "origin", "main")
+        try:
+            git("push", "-u", "origin", "main", timeout=40)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            private = [value for key, value in store.settings().items() if key in store.SECRETS and value]
+            publish_tree(client, endpoint, ROOT, ALLOWED, private, user)
         pages = client.get(endpoint + "/pages")
         if pages.status_code == 404:
             pages = client.post(endpoint + "/pages", json={"source": {"branch": "main", "path": "/docs"}, "build_type": "legacy"})

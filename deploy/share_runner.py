@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -50,6 +51,27 @@ class ConnectionHealth:
             return False
         self.failures += 1
         return self.failures >= 3 and (self.was_ready or now - self.started >= 90)
+
+
+def listening(port):
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def restore_local_services(env):
+    """Restart stopped services only; never create duplicates on occupied ports."""
+    if not ready("http://127.0.0.1:8787/api/bootstrap"):
+        if not listening(8787):
+            subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ROOT / "start.ps1")],
+                           cwd=ROOT, env=env, check=True, timeout=40, capture_output=True, creationflags=FLAGS)
+    if not ready("http://127.0.0.1:8788/api/share/status") and not listening(8788):
+        with (WORK / "share-gateway.log").open("ab") as output:
+            subprocess.Popen([str(PYTHON), "-B", str(ROOT / "run_share.py")], cwd=ROOT, env=env,
+                             stdout=output, stderr=subprocess.STDOUT, creationflags=FLAGS)
+    return bool(ready("http://127.0.0.1:8787/api/bootstrap") and ready("http://127.0.0.1:8788/api/share/status"))
 
 
 def main():
@@ -138,6 +160,19 @@ def main():
                 published_url = None
             if time.time() >= next_health_check:
                 now = time.time()
+                try:
+                    local_online = restore_local_services(env)
+                except (OSError, subprocess.SubprocessError):
+                    local_online = False
+                if not local_online:
+                    state.update(online=False, checked_at=now, message="Restoring local studio services")
+                    save(state)
+                    next_health_check = now + 15
+                    time.sleep(1)
+                    continue
+                gateway_pid_file = WORK / "share-gateway.pid"
+                if gateway_pid_file.exists():
+                    state["gateway_pid"] = int(gateway_pid_file.read_text(encoding="ascii"))
                 probe = ready(state["url"] + "/api/share/ping")
                 online = bool(probe and probe.get("online"))
                 restart = health.observe(online, now)

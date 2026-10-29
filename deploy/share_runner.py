@@ -185,7 +185,7 @@ def main():
                 if restart:
                     # An expired quick tunnel can keep retrying forever without exiting.
                     tunnel.terminate()
-                    cloud_attempted = False
+                    cloud_attempted = provider == "cloudflare"
                     published_url = None
                     retry_at = 0
                     continue

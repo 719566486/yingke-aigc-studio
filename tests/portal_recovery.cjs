@@ -15,9 +15,9 @@ async function run(mode){
  return {nodes,redirected};
 }
 (async()=>{
- let v=await run('healthy');assert.equal(v.redirected,'https://current.lhr.life/');
- v=await run('blocked');assert.equal(v.redirected,null);assert.equal(v.nodes.enter.hidden,false);assert.match(v.nodes.status.textContent,/无法连接/);
+ let v=await run('healthy');assert.equal(v.redirected,null);assert.equal(v.nodes.enter.href,'https://current.lhr.life/');assert.match(v.nodes.enter.textContent,/开始创作/);
+ v=await run('blocked');assert.equal(v.redirected,null);assert.equal(v.nodes.enter.hidden,false);assert.match(v.nodes.message.textContent,/页面仍可浏览/);
  v=await run('invalid');assert.equal(v.redirected,null);assert.equal(v.nodes.enter.hidden,true);
- v=await run('offline');assert.equal(v.redirected,null);assert.match(v.nodes.message.textContent,/后台可能离线/);
+ v=await run('offline');assert.equal(v.redirected,null);assert.match(v.nodes.message.textContent,/工作室离线/);
  console.log('4 portal recovery checks passed');
 })().catch(e=>{console.error(e);process.exitCode=1});

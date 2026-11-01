@@ -29,11 +29,11 @@ async function connect(){
    return target;
   });
   const target=await Promise.any(attempts);
-  enter.href=target;enter.hidden=false;status.textContent="工作室已就绪";message.textContent="正在进入创作体验…";
-  location.replace(target);
+  enter.href=target;enter.textContent="开始创作 →";enter.hidden=false;spinner.hidden=true;
+  status.textContent="创作服务已就绪";message.textContent="点击开始创作，完成后用手机扫码领取短片。";
  }catch(error){
-  status.textContent=configured?"暂时无法连接创作后台":"暂时无法获取工作室地址";
-  message.textContent=configured?"后台可能离线，或浏览器连接检查超时。可尝试上方直达入口；页面将在15秒后自动重试。":"网络连接未成功，将在15秒后自动重试。";
+  status.textContent="欢迎来到映刻工作室";
+  message.textContent=configured?"创作服务暂未连接，页面仍可浏览。可能是工作室离线或网络检查超时；可尝试直达入口，15秒后自动重试。":"页面已打开，正在等待创作服务的最新地址，15秒后自动重试。";
   spinner.hidden=true;retry.hidden=false;retryTimer=setTimeout(connect,15000);
  }finally{connecting=false;}
 }

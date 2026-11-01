@@ -50,6 +50,17 @@ def verify(url):
         video = client.get(url + "/api/jobs/" + job_id + "/file/video", headers={"Range": "bytes=0-1023"})
         if video.status_code != 206:
             raise RuntimeError("成片读取未通过，原入口保持不变。")
+        claim = client.get(url + "/api/jobs/" + job_id + "/delivery")
+        claim.raise_for_status()
+        qr = client.get(url + claim.json()["qr_url"])
+        if qr.status_code != 200 or not qr.content.startswith(b"\x89PNG"):
+            raise RuntimeError("云端二维码生成未通过，原入口保持不变。")
+        with httpx.Client(timeout=40) as phone:
+            landing = phone.get(claim.json()["url"])
+            landing.raise_for_status()
+            scan = phone.get(claim.json()["url"] + "/video?download=true",headers={"Range":"bytes=0-1023"})
+            if scan.status_code != 206:
+                raise RuntimeError("无原浏览器会话的扫码下载未通过，原入口保持不变。")
         return {"cloud_preview_job": job_id, "video_range": 206, "paid_generation_submitted": False}
 
 

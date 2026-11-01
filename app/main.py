@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageOps, UnidentifiedImageError
 from . import store, providers, media
 from .ui import version_assets
+from . import delivery
 
 TOKEN=secrets.token_urlsafe(32)
 TASKS=queue.Queue()
@@ -150,6 +151,15 @@ async def lifespan(app):
     thread.join(timeout=3)
 
 app=FastAPI(title="映刻 AIGC 创作体验平台",lifespan=lifespan,docs_url=None,redoc_url=None)
+app.include_router(delivery.router)
+
+@app.get("/api/jobs/{job_id}/delivery")
+def delivery_link(job_id:str, request:Request):
+    return delivery.create(valid_id(job_id), delivery.public_origin(request))
+
+@app.get("/api/jobs/{job_id}/delivery/qr")
+def delivery_qr(job_id:str, request:Request):
+    return delivery.qr_image(delivery_link(job_id,request)["url"])
 app.add_middleware(TrustedHostMiddleware,allowed_hosts=["127.0.0.1","localhost","testserver"])
 
 @app.middleware("http")

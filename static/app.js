@@ -176,12 +176,24 @@ function showJob(job){
     $("poster").hidden=true;const video=$("resultVideo");video.hidden=false;
     if(video.dataset.job!==job.id){video.poster=job.cover_url||"";video.src=job.video_url;video.dataset.job=job.id;video.load();}
     const base="/api/jobs/"+job.id+"/file/";
-    $("downloadVideo").href=base+"video?download=true";$("downloadSrt").href=base+"subtitles?download=true";$("downloadPlan").href=base+"storyboard?download=true";$("downloadCover").href=base+"cover?download=true";
+    if($("deliveryBox").dataset.job!==job.id){$("deliveryBox").dataset.job=job.id;loadDelivery(job.id);}
+    $("downloadVideo").onclick=()=>loadDelivery(job.id);
+    $("downloadSrt").href=base+"subtitles?download=true";$("downloadPlan").href=base+"storyboard?download=true";$("downloadCover").href=base+"cover?download=true";
   }else{
     $("resultVideo").pause();$("resultVideo").hidden=true;$("poster").hidden=false;
     if(job.cover_url){$("posterImage").src=job.cover_url;$("posterTitle").textContent="";document.querySelector(".poster-title").hidden=true;$("posterImage").alt="当前作品分镜预演封面";}
     else{$("posterImage").src="/assets/landscape.svg";$("posterTitle").textContent=job.title;document.querySelector(".poster-title").hidden=false;}
   }
+}
+async function loadDelivery(id){
+  $("deliveryQR").hidden=true;$("deliveryLink").hidden=true;$("deliveryNote").textContent="正在准备下载二维码…";
+  try{
+    const data=await api("/api/jobs/"+id+"/delivery");
+    if($("deliveryBox").dataset.job!==id)return;
+    $("deliveryQR").src=data.qr_url+"?t="+Date.now();$("deliveryQR").hidden=false;
+    $("deliveryLink").href=data.url;$("deliveryLink").hidden=false;
+    $("deliveryNote").textContent="请用手机扫码，在打开的页面保存视频。有效至 "+new Date(data.expires*1000).toLocaleString()+"。持有二维码的人均可领取，请勿公开张贴。"+(data.temporary_host?" 当前使用电脑临时分享地址，重连或关机可能失效；云端部署后才不依赖本机。":"");
+  }catch(e){if($("deliveryBox").dataset.job===id)$("deliveryNote").textContent=e.message;}
 }
 function stopPolling(){if(state.poll)clearInterval(state.poll);state.poll=null;}
 function startPolling(id){

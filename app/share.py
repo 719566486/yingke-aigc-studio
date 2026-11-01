@@ -21,6 +21,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .store import ROOT, DATA, JOBS, UPLOADS, AUDIO_UPLOADS, protect
 from .ui import version_assets
+from . import delivery
 
 CORE = "http://127.0.0.1:8787"
 DB = DATA / "share.sqlite3"
@@ -113,6 +114,16 @@ def owns_upload(owner, upload_id):
 
 
 app = FastAPI(title="映刻访客体验", docs_url=None, redoc_url=None, openapi_url=None)
+app.include_router(delivery.router)
+
+@app.get("/api/jobs/{job_id}/delivery")
+def delivery_link(job_id:str, request:Request):
+    owns_job(request.state.visitor["id"], job_id)
+    return delivery.create(job_id, delivery.public_origin(request))
+
+@app.get("/api/jobs/{job_id}/delivery/qr")
+def delivery_qr(job_id:str, request:Request):
+    return delivery.qr_image(delivery_link(job_id,request)["url"])
 SHARE_HOSTS = ["127.0.0.1", "localhost", "testserver", "*.trycloudflare.com", "*.lhr.life", "*.localhost.run"]
 SHARE_HOSTS += [h.strip() for h in os.environ.get("STUDIO_PUBLIC_HOSTS", "").split(",") if h.strip()]
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=SHARE_HOSTS)
